@@ -109,7 +109,25 @@ public class TuiObserver : IAgentObserver
 
     public ToolCall? OnToolCallExecuting(ToolCall call, int step)
     {
-        // If paused, return the call as-is (no interception in basic mode)
+        // Snapshot files before write operations for diff viewing
+        if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (call.Arguments.TryGetProperty("path", out var pathEl))
+                {
+                    var path = pathEl.GetString();
+                    if (path != null)
+                    {
+                        var fullPath = Path.GetFullPath(Path.Combine(
+                            Directory.GetCurrentDirectory(), path));
+                        DiffViewer.Snapshot(fullPath);
+                    }
+                }
+            }
+            catch { /* best effort */ }
+        }
+
         return call;
     }
 
