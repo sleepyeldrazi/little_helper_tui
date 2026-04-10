@@ -91,7 +91,7 @@ class Program
 
             var logger = new SessionLogger(modelId, workingDir);
             using var cts = new CancellationTokenSource();
-            lastAgent = ClientFactory.CreateAgent(resolved!, workingDir, observer, logger, _tuiConfig);
+            lastAgent = ClientFactory.CreateAgent(resolved!, workingDir, observer, logger);
 
             // Clear the raw input lines that InputHandler echoed during typing
             // so only the formatted panel remains. +1 for the ── separator line.
