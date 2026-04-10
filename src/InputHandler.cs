@@ -14,6 +14,9 @@ public static class InputHandler
     private static int _historyIndex = -1;
     private static string _savedDraft = "";
 
+    /// <summary>Number of terminal lines the last input occupied (for clearing before panel render).</summary>
+    public static int LastRenderedLineCount { get; private set; } = 1;
+
     /// <summary>Read a line with full editing support. Returns null on Ctrl+C / Ctrl+D.</summary>
     public static string? ReadLine(IAnsiConsole console, string prompt = ">")
     {
@@ -41,6 +44,7 @@ public static class InputHandler
                             History.Add(line);
                     }
                     _historyIndex = -1;
+                    LastRenderedLineCount = prevRenderedLines;
                     return line;
 
                 case { Key: ConsoleKey.Escape }:

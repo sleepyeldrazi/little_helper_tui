@@ -93,6 +93,13 @@ class Program
             using var cts = new CancellationTokenSource();
             lastAgent = ClientFactory.CreateAgent(resolved!, workingDir, observer, logger, _tuiConfig);
 
+            // Clear the raw input lines that InputHandler echoed during typing
+            // so only the formatted panel remains. +1 for the ── separator line.
+            var inputLineCount = InputHandler.LastRenderedLineCount + 1;
+            for (int i = 0; i < inputLineCount; i++)
+                Console.Write("\u001b[1A\r\u001b[K");
+            Console.Write("\r\u001b[K");
+
             var userPanel = new Panel(Markup.Escape(input))
                 .Header("[green]You[/]")
                 .Border(BoxBorder.Rounded)
@@ -187,7 +194,7 @@ class Program
 
             if (result2 != null)
             {
-                StatusBar.RenderDone(console, modelId, result2, observer.CurrentStep, sw.ElapsedMilliseconds);
+                StatusBar.RenderDone(console, modelId, result2, observer.CurrentStep, sw.ElapsedMilliseconds, observer);
                 observer = new TuiObserver();
             }
         }
