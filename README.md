@@ -32,13 +32,21 @@ Core is a read-only git submodule. The TUI wraps it -- when core doesn't provide
 
 ---
 
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sleepyeldrazi/little_helper_tui/main/install.sh | bash
+```
+
+Detects Linux/macOS, installs .NET 10 if needed, clones the repo, builds, symlinks `~/.local/bin/little`, and creates default config files.
+
 ## Prerequisites
 
 - .NET 10 SDK
 - A model endpoint (Ollama, OpenRouter, Kimi, Anthropic, etc.)
 - Config at `~/.little_helper/models.json`
 
-## Setup
+## Manual Setup
 
 ```bash
 git clone --recurse-submodules https://github.com/sleepyeldrazi/little_helper_tui.git
@@ -97,6 +105,7 @@ Type any command at the `>` prompt.
 | `:sessions N` | Show session #N with transcript |
 | `:skills` | Browse and inject skills |
 | `:diff` | Show diff for last file write |
+| `:files` | List files changed this session |
 | `:arena` | A/B test two models |
 | `:config` | Show TUI config |
 | `:reset` | Reset conversation |
@@ -157,8 +166,10 @@ TUI-specific settings. Auto-generated on first run.
   "max_tool_output_lines": 20,
   "max_steps": 500,
   "default_model": null,
+  "streaming": false,
   "git_checkpoint": "auto",
-  "theme": "default"
+  "theme": "default",
+  "verbose": false
 }
 ```
 
@@ -174,7 +185,7 @@ Set `default_model` to a model id (e.g. `"qwen3:14b"`) to skip the model picker 
 | `"on"` | Always checkpoints — initializes a local git repo if needed, makes local commits |
 | `"off"` | Never checkpoints |
 
-Every time the agent calls the `write` tool, little helper stages and commits the file's current content before the overwrite. This creates a rollback point you can `git checkout` or `git diff` at any time.
+Every time the agent calls the `write` or `edit` tool, little helper stages and commits the file's current content before the overwrite. This creates a rollback point you can `git checkout` or `git diff` at any time.
 
 When set to `"on"` in a fresh directory, it runs `git init`, configures a local user, and commits the initial state. Everything stays local until you push.
 
