@@ -102,6 +102,12 @@ class Program
             AgentResult? result2 = null;
             var agentRef = lastAgent;
 
+            // Redirect stderr so core's Console.Error.WriteLine doesn't
+            // corrupt the Spectre spinner display
+            var originalStderr = Console.Error;
+            var stderrCapture = new StringWriter();
+            Console.SetError(stderrCapture);
+
             try
             {
                 await console.Status()
@@ -124,7 +130,25 @@ class Program
                 console.WriteLine();
                 continue;
             }
-            finally { logger.Dispose(); }
+            finally
+            {
+                Console.SetError(originalStderr);
+                logger.Dispose();
+            }
+
+            // Show captured stderr as clean error messages (deduplicate, limit)
+            var stderrLines = stderrCapture.ToString()
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0)
+                .Distinct()
+                .Take(5)
+                .ToList();
+            foreach (var line in stderrLines)
+            {
+                var msg = line.Length > 120 ? line[..120] + "..." : line;
+                console.MarkupLine($"[red]! {Markup.Escape(msg)}[/]");
+            }
 
             sw.Stop();
             observer.Drain(console);
