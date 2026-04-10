@@ -20,14 +20,13 @@ public static class ModelSelector
             return PromptManual(console);
         }
 
-        // Build selection items
+        // Build selection items with plain text (no markup in data)
         var items = new List<SelectionItem>();
         foreach (var (provider, modelId, name, contextWindow, apiType) in models)
         {
-            var label = $"{name} [dim]({provider}, {contextWindow / 1024}K context)[/]";
-            items.Add(new SelectionItem(label, provider, modelId, contextWindow, apiType));
+            items.Add(new SelectionItem(name, provider, modelId, contextWindow, apiType));
         }
-        items.Add(new SelectionItem("[dim]Other (enter manually)[/]", "", "", 0, ""));
+        items.Add(new SelectionItem("Other (enter manually)", "", "", 0, ""));
 
         console.WriteLine();
         var selected = console.Prompt(
@@ -35,7 +34,12 @@ public static class ModelSelector
                 .Title("[bold]Select a model:[/]")
                 .PageSize(10)
                 .MoreChoicesText("[dim](Move up and down to see more)[/]")
-                .UseConverter(item => item.Label.Replace("[/", "[/").Replace("[dim]", "").Replace("[bold]", ""))
+                .UseConverter(item =>
+                {
+                    if (string.IsNullOrEmpty(item.ModelId))
+                        return $"[dim]{item.DisplayName}[/]";
+                    return $"{item.DisplayName}  [dim]({item.Provider}, {item.ContextWindowK}K context)[/]";
+                })
                 .AddChoices(items)
         );
 
@@ -80,5 +84,8 @@ public static class ModelSelector
     }
 
     private record SelectionItem(
-        string Label, string Provider, string ModelId, int ContextWindow, string ApiType);
+        string DisplayName, string Provider, string ModelId, int ContextWindow, string ApiType)
+    {
+        public string ContextWindowK => ContextWindow > 0 ? (ContextWindow / 1024).ToString() : "?";
+    }
 }
