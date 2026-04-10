@@ -9,6 +9,22 @@ class Program
     private static string? _pendingSkillContent = null;
     private static TuiConfig _tuiConfig = new();
     private static GitCheckpoint? _gitCheckpoint;
+    private static int _lastConsoleWidth = Console.WindowWidth;
+
+    /// <summary>Check if terminal width changed and redraw if so.</summary>
+    private static void CheckResize(IAnsiConsole console, TuiObserver observer)
+    {
+        try
+        {
+            var width = Console.WindowWidth;
+            if (width != _lastConsoleWidth)
+            {
+                _lastConsoleWidth = width;
+                observer.Redraw(console);
+            }
+        }
+        catch { /* Console.WindowWidth can throw when no terminal */ }
+    }
 
     static async Task<int> Main(string[] args)
     {
@@ -64,6 +80,7 @@ class Program
 
         while (true)
         {
+            CheckResize(console, observer);
             observer.Drain(console);
             console.MarkupLine("[dim]──[/]");
 
@@ -182,6 +199,7 @@ class Program
                             clearHistory: isFirstTurn);
                         while (!task.IsCompleted)
                         {
+                            CheckResize(console, observer);
                             observer.Drain(console);
                             var preview = observer.StreamingPreview;
                             var status = string.IsNullOrEmpty(preview)

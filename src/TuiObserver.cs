@@ -13,6 +13,7 @@ public class TuiObserver : IAgentObserver
 {
     private readonly object _lock = new();
     private readonly List<Action<IAnsiConsole>> _renderQueue = new();
+    private readonly List<Action<IAnsiConsole>> _renderHistory = new(); // survives Drain for redraw
     private readonly StringBuilder _streamingContent = new();
     private readonly StringBuilder _streamingThinking = new();
     private bool _isStreaming;
@@ -61,7 +62,11 @@ public class TuiObserver : IAgentObserver
         TotalThinkingTokens = 0;
         CurrentStep = 0;
         CurrentState = AgentState.Planning;
-        lock (_lock) { _renderQueue.Clear(); }
+        lock (_lock)
+        {
+            _renderQueue.Clear();
+            _renderHistory.Clear();
+        }
     }
 
     /// <summary>Drain and render all queued events to the console.</summary>
@@ -72,10 +77,29 @@ public class TuiObserver : IAgentObserver
         {
             batch = new List<Action<IAnsiConsole>>(_renderQueue);
             _renderQueue.Clear();
+            _renderHistory.AddRange(batch);
         }
 
         foreach (var action in batch)
             action(console);
+    }
+
+    /// <summary>
+    /// Clear screen and replay all rendered panels at the current terminal width.
+    /// Called when terminal width changes (font size, window resize).
+    /// </summary>
+    public void Redraw(IAnsiConsole console)
+    {
+        List<Action<IAnsiConsole>> snapshot;
+        lock (_lock)
+        {
+            snapshot = new List<Action<IAnsiConsole>>(_renderHistory);
+        }
+
+        Console.Clear();
+        foreach (var action in snapshot)
+            action(console);
+        Console.Out.Flush();
     }
 
     // --- IAgentObserver implementation ---
