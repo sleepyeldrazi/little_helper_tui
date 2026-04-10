@@ -315,6 +315,26 @@ class Program
                 else console.MarkupLine("[dim]No conversation yet.[/]");
                 return new CmdHandleResult(CmdResult.Continue);
 
+            case ":files":
+                if (agent != null)
+                {
+                    var files = agent.History
+                        .Where(m => m.Role == "tool" && m.ToolResult?.FilePath != null && !m.ToolResult.IsError)
+                        .Select(m => m.ToolResult!.FilePath!)
+                        .Distinct()
+                        .ToList();
+                    if (files.Count > 0)
+                    {
+                        console.MarkupLine("[bold]Files changed this session:[/]");
+                        foreach (var f in files)
+                            console.MarkupLine($"  [blue]{Markup.Escape(f)}[/]");
+                        console.WriteLine();
+                    }
+                    else console.MarkupLine("[dim]No files changed yet.[/]");
+                }
+                else console.MarkupLine("[dim]No conversation yet.[/]");
+                return new CmdHandleResult(CmdResult.Continue);
+
             case ":arena":
                 console.MarkupLine("[bold]Select two models for arena mode:[/]");
                 console.MarkupLine("[dim]Model 1:[/]");
@@ -356,6 +376,7 @@ class Program
                 console.MarkupLine("  [blue]:sessions[/] [N]   Browse sessions / show session #N");
                 console.MarkupLine("  [blue]:skills[/]         Browse and inject skills");
                 console.MarkupLine("  [blue]:diff[/]           Show diff for last file write");
+                console.MarkupLine("  [blue]:files[/]          List files changed this session");
                 console.MarkupLine("  [blue]:arena[/]          A/B test two models side-by-side");
                 console.MarkupLine("  [blue]:config[/]         Show TUI config");
                 console.MarkupLine("  [blue]:reset[/]          Reset conversation");

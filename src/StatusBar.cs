@@ -35,18 +35,16 @@ public static class StatusBar
         AgentResult result, int steps, long elapsedMs, TuiObserver observer)
     {
         var icon = result.Success ? "[green]:check_mark:[/]" : "[red]:cross_mark:[/]";
-        var tokens = FormatTokens(observer.TotalTokens);
+        var context = FormatTokens(observer.TotalTokens);
         var thinking = FormatTokens(observer.TotalThinkingTokens);
         var elapsed = elapsedMs < 1000 ? $"{elapsedMs}ms" : $"{elapsedMs / 1000.0:F1}s";
 
         console.WriteLine();
-        console.MarkupLine($"{icon} [bold]Done[/] [dim]{steps} steps, {elapsed}, {tokens} tokens ({thinking} thinking)[/]");
+        console.MarkupLine($"{icon} [bold]Done[/] [dim]{steps} steps, {elapsed}, {context} context ({thinking} thinking)[/]");
 
         if (result.FilesChanged.Count > 0)
         {
-            console.MarkupLine("[dim]Files changed:[/]");
-            foreach (var file in result.FilesChanged)
-                console.MarkupLine($"  [blue]{Markup.Escape(file)}[/]");
+            console.MarkupLine($"[dim]  {result.FilesChanged.Count} files changed. Use :files to list.[/]");
         }
 
         console.WriteLine();

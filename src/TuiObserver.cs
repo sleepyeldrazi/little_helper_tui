@@ -116,8 +116,10 @@ public class TuiObserver : IAgentObserver
                                 + "\n" + string.Join('\n', lines.TakeLast(3));
                     }
 
+                    var ctxTok = FormatTokens(response.TokensUsed);
+                    var thinkTok = FormatTokens(response.ThinkingTokens);
                     var thinkingPanel = new Panel(Markup.Escape(preview))
-                        .Header($"[dim]Thinking[/] [dim]({response.ThinkingTokens} tokens)[/]")
+                        .Header($"[dim]Thinking[/] [dim]({thinkTok} thinking, {ctxTok} context)[/]")
                         .Border(BoxBorder.Rounded)
                         .BorderColor(Color.Grey)
                         .Expand();
@@ -130,8 +132,9 @@ public class TuiObserver : IAgentObserver
             {
                 _renderQueue.Add(console =>
                 {
+                    var ctxTok = FormatTokens(response.TokensUsed);
                     var panel = new Panel(Markup.Escape(response.Content))
-                        .Header($"[blue]Assistant[/] [dim]Step {step}[/]")
+                        .Header($"[blue]Assistant[/] [dim]Step {step} ({ctxTok} context)[/]")
                         .Border(BoxBorder.Rounded)
                         .BorderColor(Color.Blue)
                         .Expand();
@@ -400,4 +403,9 @@ public class TuiObserver : IAgentObserver
 
     private static string FormatDuration(long ms) =>
         ms < 1000 ? $"{ms}ms" : $"{ms / 1000.0:F1}s";
+
+    private static string FormatTokens(int tokens) =>
+        tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:F1}M"
+        : tokens >= 1_000 ? $"{tokens / 1_000.0:F1}K"
+        : $"{tokens}";
 }
