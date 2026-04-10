@@ -19,8 +19,8 @@ public static class InputHandler
     {
         var buf = new StringBuilder();
         int cursor = 0; // position within buf
+        int prevRenderedLines = 1; // track how many lines we're occupying
 
-        // Print prompt using raw ANSI (avoid Spectre markup parsing issues)
         Console.Write($"\u001b[1m{prompt}\u001b[0m ");
         var promptLen = prompt.Length + 1; // visible width of "> "
 
@@ -44,9 +44,10 @@ public static class InputHandler
                     return line;
 
                 case { Key: ConsoleKey.Escape }:
-                    ClearLine(buf, cursor, promptLen);
+                    ClearLine(buf, cursor, promptLen, prevRenderedLines);
                     buf.Clear();
                     cursor = 0;
+                    prevRenderedLines = 1;
                     break;
 
                 case { Key: ConsoleKey.C, Modifiers: ConsoleModifiers.Control }:
@@ -185,29 +186,63 @@ public static class InputHandler
             }
 
             // Re-render the line
-            RedrawLine(buf.ToString(), cursor, promptLen);
+            RedrawLine(buf.ToString(), cursor, promptLen, ref prevRenderedLines);
         }
     }
 
     /// <summary>Clear and redraw the input line.</summary>
-    private static void RedrawLine(string text, int cursor, int promptLen)
+    private static void RedrawLine(string text, int cursor, int promptLen, ref int prevRenderedLines)
     {
-        // Move to start of input, clear to end of line, write text, position cursor
+        var totalWidth = Console.WindowWidth;
+        if (totalWidth <= 0) totalWidth = 80;
+        var totalCells = promptLen + text.Length;
+
+        // Move to start of input area (first line of our text)
+        if (prevRenderedLines > 1)
+            Console.Write($"\u001b[{prevRenderedLines - 1}A");
+
+        // Clear from cursor to end of screen (handles all lines)
+        Console.Write("\u001b[2K"); // clear current line
         Console.Write("\r");
-        Console.Write(new string(' ', promptLen + text.Length + 1));
-        Console.Write("\r");
+        Console.Write("\u001b[J");  // clear everything below
+
+        // Write prompt + text
         Console.Write(new string(' ', promptLen));
         Console.Write(text);
-        // Position cursor
-        Console.SetCursorPosition(promptLen + cursor, Console.CursorTop);
+
+        // Track new line count
+        var newRenderedLines = (totalCells / totalWidth) + 1;
+        if (totalCells > 0 && totalCells % totalWidth == 0) newRenderedLines++;
+        prevRenderedLines = newRenderedLines;
+
+        // Position cursor: we're at end of text, move to cursor position
+        var cursorPos = promptLen + cursor;
+        var endPos = totalCells;
+        var cursorLine = cursorPos / totalWidth;
+        var endLine = endPos / totalWidth;
+        var cursorCol = cursorPos % totalWidth;
+        var endCol = endPos % totalWidth;
+
+        var lineDiff = endLine - cursorLine;
+        var colDiff = endCol - cursorCol;
+
+        if (lineDiff > 0) Console.Write($"\u001b[{lineDiff}A");
+        if (colDiff > 0) Console.Write($"\u001b[{colDiff}D");
+        else if (colDiff < 0) Console.Write($"\u001b[{-colDiff}C");
+
+        Console.Out.Flush();
     }
 
     /// <summary>Clear the entire input line.</summary>
-    private static void ClearLine(StringBuilder buf, int cursor, int promptLen)
+    private static void ClearLine(StringBuilder buf, int cursor, int promptLen, int prevRenderedLines)
     {
-        Console.Write("\r");
-        Console.Write(new string(' ', promptLen + buf.Length + 1));
-        Console.Write("\r");
+        var totalWidth = Console.WindowWidth;
+        if (totalWidth <= 0) totalWidth = 80;
+
+        if (prevRenderedLines > 1)
+            Console.Write($"\u001b[{prevRenderedLines - 1}A");
+
+        Console.Write("\u001b[2K\r\u001b[J");
         Console.Write(new string(' ', promptLen));
     }
 

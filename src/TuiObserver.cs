@@ -23,6 +23,22 @@ public class TuiObserver : IAgentObserver
     public int TotalThinkingTokens { get; private set; }
     public bool IsPaused { get; set; }
 
+    /// <summary>Current streaming content (for live display during spin loop).</summary>
+    public string StreamingPreview
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (_streamingContent.Length == 0) return "";
+                var text = _streamingContent.ToString();
+                // Last 80 chars for compact preview
+                if (text.Length > 80) text = "..." + text[^77..];
+                return text.Replace("\n", " ").Trim();
+            }
+        }
+    }
+
     /// <summary>Drain and render all queued events to the console.</summary>
     public void Drain(IAnsiConsole console)
     {

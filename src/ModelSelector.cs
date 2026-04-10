@@ -5,8 +5,8 @@ namespace LittleHelperTui;
 
 /// <summary>
 /// Model selection prompt. Loads ~/.little_helper/models.json and
-/// presents a Spectre selection prompt for the user to pick a model.
-/// Falls back to a manual entry if no config exists.
+/// presents a Spectre selection prompt sorted by provider status.
+/// Configured providers (with API key or localhost) on top, others below.
 /// </summary>
 public static class ModelSelector
 {
@@ -20,22 +20,46 @@ public static class ModelSelector
             return PromptManual(console);
         }
 
-        // Build selection items with plain text (no markup in data)
-        var items = new List<SelectionItem>();
+        // Separate into configured (has API key or localhost) and unconfigured
+        var configured = new List<SelectionItem>();
+        var unconfigured = new List<SelectionItem>();
+
         foreach (var (provider, modelId, name, contextWindow, apiType) in models)
         {
-            items.Add(new SelectionItem(name, provider, modelId, contextWindow, apiType));
+            var item = new SelectionItem(name, provider, modelId, contextWindow, apiType);
+            var prov = config.Providers.TryGetValue(provider, out var p) ? p : null;
+            var hasApiKey = !string.IsNullOrEmpty(prov?.ApiKey);
+            var isLocalhost = prov?.BaseUrl?.Contains("localhost") == true
+                           || prov?.BaseUrl?.Contains("127.0.0.1") == true;
+
+            if (hasApiKey || isLocalhost)
+                configured.Add(item);
+            else
+                unconfigured.Add(item);
         }
+
+        // Build final list: configured first, then unconfigured, then manual
+        var items = new List<SelectionItem>();
+        items.AddRange(configured);
+
+        if (unconfigured.Count > 0)
+        {
+            items.Add(new SelectionItem("-- no API key --", "", "", 0, "", true));
+            items.AddRange(unconfigured);
+        }
+
         items.Add(new SelectionItem("Other (enter manually)", "", "", 0, ""));
 
         console.WriteLine();
         var selected = console.Prompt(
             new SelectionPrompt<SelectionItem>()
                 .Title("[bold]Select a model:[/]")
-                .PageSize(10)
+                .PageSize(15)
                 .MoreChoicesText("[dim](Move up and down to see more)[/]")
                 .UseConverter(item =>
                 {
+                    if (item.IsSeparator)
+                        return $"[dim]────────────────[/]";
                     if (string.IsNullOrEmpty(item.ModelId))
                         return $"[dim]{item.DisplayName}[/]";
                     return $"{item.DisplayName}  [dim]({item.Provider}, {item.ContextWindowK}K context)[/]";
@@ -84,7 +108,8 @@ public static class ModelSelector
     }
 
     private record SelectionItem(
-        string DisplayName, string Provider, string ModelId, int ContextWindow, string ApiType)
+        string DisplayName, string Provider, string ModelId, int ContextWindow, string ApiType,
+        bool IsSeparator = false)
     {
         public string ContextWindowK => ContextWindow > 0 ? (ContextWindow / 1024).ToString() : "?";
     }

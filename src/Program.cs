@@ -134,7 +134,11 @@ class Program
                         while (!task.IsCompleted)
                         {
                             observer.Drain(console);
-                            ctx.Status($"Running {resolved!.ModelId}... Step {observer.CurrentStep} [dim](Space=pause, Ctrl+C=cancel)[/]");
+                            var preview = observer.StreamingPreview;
+                            var status = string.IsNullOrEmpty(preview)
+                                ? $"Running {resolved!.ModelId}... Step {observer.CurrentStep}"
+                                : Markup.Escape(preview);
+                            ctx.Status(status);
                             await Task.Delay(100, cts.Token);
                         }
                         result2 = await task;
