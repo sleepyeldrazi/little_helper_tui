@@ -1,6 +1,6 @@
 # Probably the only non-LLM generated file in this repo
 
-Hi. This little project is the culmination of the last month or so of gathering research, prototyping, and testing every strategy I can find or think of regarding extracting value out of LLMs and specifically small/local ones. It is a harness that shares a lot of one of my favourite harness's core ideas, https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent, while trying to make it more *specialized* towards working well with small / local models, and in a codebase tailored to being maintained by agents.
+Hi. This little project is the culmination of the last month or so of gathering research, prototyping, and testing every strategy I can find or think of regarding extracting value out of LLMs and specifically small/local ones. It is a harness that shares a lot of one of my favourite harness's core ideas, [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent), while trying to make it more *specialized* towards working well with small / local models, and in a codebase tailored to being maintained by agents.
 
 *Note*: It's all my opinions and experiences. I can be wrong. I often am. I might change my mind on half of the things here in a day. This is a snapshot of where I'm at based on what I've seen so far. All projects I mentioned I adore, they are all made by amazing people and I hope they keep working on cool stuff, so that I can keep gushing over them.
 
@@ -24,7 +24,7 @@ This project is build on top of research regarding prompting, orchestration tool
 
 It is build by (the not-so small) model GLM-5.1 by Z.AI. I have my notes, but a cool and useful model.
 
-You might notice its written in C# and not the usual typescript/python/rust trifecta that seems to have taken hold of all those tools. There is a cool benchmark, namely https://github.com/Tencent-Hunyuan/AutoCodeBenchmark that pinned a bunch of models against eachoter on ~200 similar tasks in a bunch of languages, and C#, somewhat surprisingly for me, was one of the best "LLM writes this correctly" languages. I decided to use that info for a project I don't plan on touching the code for too much.
+You might notice its written in C# and not the usual typescript/python/rust trifecta that seems to have taken hold of all those tools. There is a cool benchmark, namely [AutoCodeBenchmark](https://github.com/Tencent-Hunyuan/AutoCodeBenchmark) that pinned a bunch of models against eachoter on ~200 similar tasks in a bunch of languages, and C#, somewhat surprisingly for me, was one of the best "LLM writes this correctly" languages. I decided to use that info for a project I don't plan on touching the code for too much.
 
 For the harness,Iused hermes for this particual project, like it so far, have my notes on it which I will mention in the other section.
 
@@ -49,11 +49,11 @@ When you treat an LLM like an intern that has all the knowledge they could possi
 
 This might sound like I'm contradicting myself, but try to see the neuance. I think modern models are more than capable enough. Period. We really need to focus on making them efficient, locally runnable and provide them with frameworks and tools better suited for them. This is also why I am currently a fan of asian-lab models a bit more: they feel like a tool made to help you, not a machine trying to act human and replace you.
 
-An example of why I think modern models are capable enough is something from this post https://sockpuppet.org/blog/2026/03/30/vulnerability-research-is-cooked/, specifically when they mention "Is the Linux KVM hypervisor connected to the hrtimer subsystem, workqueue, or perf_event? The model knows.". I asked this qwen3.5 35B. It knew. I also asked Gemma 4 E2B and it didn't so at least I am still smarter than a 2B model.
+An example of why I think modern models are capable enough is something from this post about [vulnerability research being cooked](https://sockpuppet.org/blog/2026/03/30/vulnerability-research-is-cooked/), specifically when they mention "Is the Linux KVM hypervisor connected to the hrtimer subsystem, workqueue, or perf_event? The model knows.". I asked this qwen3.5 35B. It knew. I also asked Gemma 4 E2B and it didn't so at least I am still smarter than a 2B model.
 
 Before I continue let me be clear, I don't think current benchmarking can be taken as a fact. I do think it is useful however to get a rough idea on model performance. There are many problems with current benchmarks (not explicitly stating the harness which accoring to terminal-bench's result can swing scores a lot), us not having a deterministic way of evaluating models, etc.
 
-With that in mind, a good example of *why* we should focus on tooling is https://github.com/itigges22/ATLAS , a project that *doubled* the the benchmarked score of a 14B model on LiveCodeBench, reaching frontier level *for that specific benchmark*. That's insane.
+With that in mind, a good example of *why* we should focus on tooling is [ATLAS](https://github.com/itigges22/ATLAS), a project that *doubled* the the benchmarked score of a 14B model on LiveCodeBench, reaching frontier level *for that specific benchmark*. That's insane.
 
 
 ## Next projects (probably)
