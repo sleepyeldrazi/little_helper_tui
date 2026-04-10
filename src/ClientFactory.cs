@@ -25,7 +25,8 @@ public static class ClientFactory
                 resolved.ModelId,
                 resolved.Temperature,
                 string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
-                resolved.Headers);
+                resolved.Headers,
+                resolved.AuthType);
         }
         else
         {
@@ -37,36 +38,44 @@ public static class ClientFactory
                 resolved.Headers);
         }
 
-        // Register tools on the appropriate client
-        ToolSchemas.RegisterAll(client, resolved.ContextWindow, resolved.ModelId);
+        // Register tools on the appropriate client (skip if provider says no tools)
+        if (resolved.ToolsEnabled != false)
+            ToolSchemas.RegisterAll(client, resolved.ContextWindow, resolved.ModelId);
 
         var tools = new ToolExecutor(workingDir, blockDestructive: false);
+
+        // Wire up SpawnManager for sub-agent spawning via tmux
+        tools.SpawnManager = new SpawnManager();
+
         return (client, tools);
     }
 
     /// <summary>
     /// Create a fully wired Agent with observer and logger.
+    /// Config values (MaxSteps, EnableStreaming) come from TuiConfig.
     /// </summary>
     public static Agent CreateAgent(ResolvedModel resolved, string workingDir,
-        TuiObserver observer, SessionLogger? logger = null)
+        TuiObserver observer, TuiConfig config, SessionLogger? logger = null)
     {
         var (client, tools) = Create(resolved, workingDir);
 
         var skills = new SkillDiscovery();
         skills.Discover(workingDir);
 
-        var config = new AgentConfig(
+        var agentConfig = new AgentConfig(
             ModelEndpoint: resolved.BaseUrl,
             ModelName: resolved.ModelId,
             MaxContextTokens: resolved.ContextWindow,
-            MaxSteps: 30,
+            MaxSteps: config.MaxSteps,
             MaxRetries: 2,
             StallThreshold: 5,
             WorkingDirectory: workingDir,
             Temperature: resolved.Temperature,
             ApiKey: string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
-            ExtraHeaders: resolved.Headers);
+            ExtraHeaders: resolved.Headers,
+            EnableStreaming: config.Streaming
+        );
 
-        return new Agent(config, client, tools, skills, logger, observer);
+        return new Agent(agentConfig, client, tools, skills, logger, observer);
     }
 }

@@ -12,19 +12,18 @@ Spectre.Console REPL -- pick a model, type prompts, watch the agent work, interv
 little_helper_tui/
   core/                    <- git submodule -> little_helper_core (read-only)
   src/
-    Program.cs             <- REPL loop, command dispatch
+    Program.cs             <- REPL loop, command dispatch, session lifecycle
     InputHandler.cs        <- custom readline with cursor editing + tab-complete
     TuiObserver.cs         <- IAgentObserver: renders agent activity via Spectre
-    ClientFactory.cs       <- routes OpenAI/Anthropic client based on ApiType
+    ClientFactory.cs       <- routes OpenAI/Anthropic client, wires AgentConfig from TuiConfig
     ModelSelector.cs       <- model picker from ~/.little_helper/models.json
     StatusBar.cs           <- step count, tokens, agent state
     TokenBudget.cs         <- bar chart + table of context window usage
     SessionManager.cs      <- browse/resume past sessions from JSONL logs
     SkillBrowser.cs        <- browse + inject SKILL.md files
     DiffViewer.cs          <- unified diff for agent file writes
-    InterventionManager.cs <- pause/resume, tool interception
     ModelArena.cs          <- A/B test two models side-by-side
-    TuiConfig.cs           <- ~/.little_helper/tui.json loader
+    TuiConfig.cs           <- ~/.little_helper/tui.json loader (all settings wired)
     GitCheckpoint.cs       <- auto-commits before agent write operations
   little_helper_tui.sln
 ```
@@ -156,7 +155,7 @@ TUI-specific settings. Auto-generated on first run.
   "show_token_budget": true,
   "auto_show_diffs": true,
   "max_tool_output_lines": 20,
-  "max_steps": 30,
+  "max_steps": 500,
   "default_model": null,
   "git_checkpoint": "auto",
   "theme": "default"
@@ -219,18 +218,15 @@ When the agent writes a file, the TUI snapshots the original content. `:diff` sh
 
 ## TODO
 
-These are in the codebase but not yet fully functional:
-
-- **Intervention (Space=pause/resume)** -- key listener is wired but Spectre.Console's Status spinner captures console input, blocking `Console.KeyAvailable`. Needs a different approach (e.g. background thread with raw terminal input, or `:pause`/`:resume` commands typed in a separate pane).
-- **Auto-show diffs** -- `tui.json` has the setting but `:diff` is manual only right now.
-- **Thinking mode toggle** -- config field exists in `tui.json` but observer always renders condensed. Needs wiring to respect `thinking_mode: full/condensed/hidden`.
+- **Intervention (pause/resume/skip)** -- needs a way to accept input during the Spectre spinner. Options: background thread polling, `:pause`/`:resume` commands, or switching to Spectre.Live<> for keyboard events.
+- **Cancellation during agent runs** -- Ctrl+C prints a message but doesn't actually cancel. The CancellationTokenSource is created but never triggered by user input.
 - **Publish as single binary** -- `dotnet publish` command works but hasn't been tested end-to-end.
 
 ---
 
 ## Status
 
-Alpha. 2,048 LOC across 14 source files. Build: 0 warnings, 0 errors.
+Alpha. 2,304 LOC across 13 source files. Build: 0 warnings, 0 errors.
 
 Core submodule: public types, IAgentObserver, streaming, Anthropic support, pause/resume, session logging, tilde expansion in tool paths.
 

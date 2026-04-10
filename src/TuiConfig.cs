@@ -5,34 +5,36 @@ namespace LittleHelperTui;
 
 /// <summary>
 /// TUI configuration loaded from ~/.little_helper/tui.json.
-/// Controls display preferences, keybindings, and defaults.
+/// Controls display preferences, agent defaults, and keybindings.
 /// </summary>
 public class TuiConfig
 {
-    // Thinking panel
+    // Thinking panel: "full" = show all, "condensed" = first+last 3 lines, "hidden" = skip
     [JsonPropertyName("thinking_mode")]
-    public string ThinkingMode { get; set; } = "condensed"; // full, condensed, hidden
+    public string ThinkingMode { get; set; } = "condensed";
 
-    // Token budget
+    // Token budget display
     [JsonPropertyName("show_token_budget")]
     public bool ShowTokenBudget { get; set; } = true;
 
-    // Diff viewer
+    // Auto-show diff panel after agent writes a file
     [JsonPropertyName("auto_show_diffs")]
     public bool AutoShowDiffs { get; set; } = true;
 
-    // Max tool output lines to display
+    // Max tool output lines to display (replaces hardcoded limits)
     [JsonPropertyName("max_tool_output_lines")]
     public int MaxToolOutputLines { get; set; } = 20;
 
-    // Agent defaults
+    // Agent step limit -- high default since stall detection + error budget
+    // + compaction + user cancel provide the real safety nets
     [JsonPropertyName("max_steps")]
-    public int MaxSteps { get; set; } = 30;
+    public int MaxSteps { get; set; } = 500;
 
+    // Default model (skip picker on startup if set)
     [JsonPropertyName("default_model")]
     public string? DefaultModel { get; set; }
 
-    // Streaming
+    // Enable SSE streaming via observer OnStreamChunk
     [JsonPropertyName("streaming")]
     public bool Streaming { get; set; } = false;
 
@@ -41,15 +43,15 @@ public class TuiConfig
     // "on"   = always checkpoint (git init if needed, local commits only)
     // "off"  = never checkpoint
     [JsonPropertyName("git_checkpoint")]
-    public string GitCheckpoint { get; set; } = "auto"; // auto, on, off
+    public string GitCheckpoint { get; set; } = "auto";
 
-    // Sub-agents (spawn tool)
-    [JsonPropertyName("subagents")]
-    public SubAgentConfig SubAgents { get; set; } = new();
-
-    // Theme
+    // Theme: "default" = current colors, "monochrome" = greyscale, "dark" = dark mode
     [JsonPropertyName("theme")]
-    public string Theme { get; set; } = "default"; // default, monochrome, dark
+    public string Theme { get; set; } = "default";
+
+    // Verbose: show pending tool calls (> prefix) and state transition details
+    [JsonPropertyName("verbose")]
+    public bool Verbose { get; set; } = false;
 
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -92,25 +94,4 @@ public class TuiConfig
         }
         catch { /* best effort */ }
     }
-}
-
-/// <summary>
-/// Sub-agent configuration. When enabled, the spawn tool is registered
-/// and sub-agents run in tmux panes.
-/// Model values: a model id (e.g. "qwen3:14b") or "default" to use the main model.
-/// </summary>
-public class SubAgentConfig
-{
-    [JsonPropertyName("enabled")]
-    public bool Enabled { get; set; } = false;
-
-    // Model for quick tasks (lookup, classification, simple edits)
-    // "default" = same as the main model
-    [JsonPropertyName("small_model")]
-    public string SmallModel { get; set; } = "default";
-
-    // Model for complex tasks (multi-step analysis, planning, synthesis)
-    // "default" = same as the main model
-    [JsonPropertyName("complex_model")]
-    public string ComplexModel { get; set; } = "default";
 }

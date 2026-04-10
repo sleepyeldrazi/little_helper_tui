@@ -11,7 +11,7 @@ namespace LittleHelperTui;
 public static class ModelArena
 {
     public static async Task RunArena(IAnsiConsole console, string prompt,
-        ResolvedModel model1, ResolvedModel model2, string workingDir)
+        ResolvedModel model1, ResolvedModel model2, string workingDir, TuiConfig config)
     {
         console.MarkupLine($"[bold]Arena:[/] [blue]{model1.ModelId}[/] vs [blue]{model2.ModelId}[/]");
         console.MarkupLine($"[dim]Prompt: {Markup.Escape(prompt.Length > 80 ? prompt[..80] + "..." : prompt)}[/]");
@@ -26,8 +26,8 @@ public static class ModelArena
         var cts = new CancellationTokenSource();
 
         // Create two agents
-        var agent1 = ClientFactory.CreateAgent(model1, workingDir, observer1, logger1);
-        var agent2 = ClientFactory.CreateAgent(model2, workingDir, observer2, logger2);
+        var agent1 = ClientFactory.CreateAgent(model1, workingDir, observer1, config, logger1);
+        var agent2 = ClientFactory.CreateAgent(model2, workingDir, observer2, config, logger2);
 
         // Run both in parallel
         var sw = Stopwatch.StartNew();

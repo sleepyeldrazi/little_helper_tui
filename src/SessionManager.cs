@@ -1,66 +1,23 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Spectre.Console;
 using LittleHelper;
 
 namespace LittleHelperTui;
 
 /// <summary>
-/// Manages session persistence. Writes JSONL logs, reads them back
-/// for browsing and resuming conversations.
+/// Manages session browsing. Uses core's SessionLogReader for parsing
+/// so the TUI doesn't duplicate the log format.
 /// </summary>
-public class SessionManager
+public static class SessionManager
 {
-    private static readonly string LogDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".little_helper", "logs");
-
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        WriteIndented = false
-    };
-
-    // --- Types ---
-
-    public record SessionSummary(
-        string FileName,
-        DateTime StartTime,
-        DateTime? EndTime,
-        string Model,
-        int Steps,
-        int Tokens,
-        int ThinkingTokens,
-        bool Success,
-        double DurationSec,
-        List<string> FilesChanged,
-        string? FirstPrompt);
-
-    private record JsonlEntry(
-        [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("timestamp")] string? Timestamp = null,
-        [property: JsonPropertyName("model")] string? Model = null,
-        [property: JsonPropertyName("success")] bool? Success = null,
-        [property: JsonPropertyName("steps")] int? Steps = null,
-        [property: JsonPropertyName("total_tokens")] int? TotalTokens = null,
-        [property: JsonPropertyName("thinking_tokens")] int? ThinkingTokens = null,
-        [property: JsonPropertyName("duration_sec")] double? DurationSec = null,
-        [property: JsonPropertyName("files_changed")] List<string>? FilesChanged = null,
-        [property: JsonPropertyName("content")] string? Content = null,
-        [property: JsonPropertyName("role")] string? Role = null);
-
     // --- Public API ---
 
     /// <summary>List recent sessions, newest first.</summary>
     public static List<SessionSummary> ListSessions(int maxCount = 20)
     {
-        if (!Directory.Exists(LogDir))
-            return new();
-
+        var files = SessionLogReader.ListLogFiles();
         var sessions = new List<SessionSummary>();
 
-        foreach (var file in Directory.GetFiles(LogDir, "*.jsonl")
-            .OrderByDescending(f => File.GetLastWriteTime(f)).Take(maxCount))
+        foreach (var file in files.Take(maxCount))
         {
             var entry = ParseSession(file);
             if (entry != null)
@@ -122,10 +79,6 @@ public class SessionManager
         }
 
         var session = sessions[index - 1];
-        var filePath = Path.Combine(LogDir, session.FileName);
-
-        // Parse full log for step details
-        var steps = ParseSteps(filePath);
 
         // Header
         var icon = session.Success ? "[green]:check_mark:[/]" : "[red]:cross_mark:[/]";
@@ -141,39 +94,50 @@ public class SessionManager
 
         console.WriteLine();
 
-        // Show step-by-step transcript
-        foreach (var step in steps)
+        // Show step-by-step transcript using core's SessionEntry
+        var entries = SessionLogReader.ReadEntries(session.FilePath);
+        foreach (var entry in entries)
         {
-            if (step.Role == "user")
+            if (entry.Type == "step" && entry.Preview != null)
             {
-                console.Write(new Panel(Markup.Escape(step.Content ?? ""))
-                    .Header("[green]User[/]")
-                    .Border(BoxBorder.Rounded)
-                    .BorderColor(Color.Green)
-                    .Expand());
-            }
-            else if (step.Role == "assistant")
-            {
-                var content = step.Content ?? "(tool calls)";
+                var role = entry.ToolCalls > 0 ? "assistant" : "assistant";
+                var content = entry.Preview;
                 if (content.Length > 300) content = content[..300] + "...";
-                console.MarkupLine($"  [teal]Assistant:[/] {Markup.Escape(content)}");
+                console.MarkupLine($"  [teal]{role}:[/] {Markup.Escape(content)}");
+            }
+            else if (entry.Type == "tool" && entry.Tool != null)
+            {
+                var resultColor = entry.IsError == true ? "red" : "green";
+                var icon2 = entry.IsError == true ? "x" : "+";
+                console.MarkupLine($"  [{resultColor}]{icon2} {entry.Tool}[/] [dim]{Markup.Escape(entry.Args ?? "")}[/]");
             }
         }
 
         console.WriteLine();
     }
 
-    // --- Parsing ---
+    // --- Parsing (uses core's SessionEntry type) ---
+
+    public record SessionSummary(
+        string FilePath,
+        DateTime StartTime,
+        string Model,
+        int Steps,
+        int Tokens,
+        int ThinkingTokens,
+        bool Success,
+        double DurationSec,
+        List<string> FilesChanged,
+        string? FirstPrompt);
 
     private static SessionSummary? ParseSession(string filePath)
     {
         try
         {
-            var lines = File.ReadAllLines(filePath);
-            if (lines.Length == 0) return null;
+            var entries = SessionLogReader.ReadEntries(filePath);
+            if (entries.Count == 0) return null;
 
             DateTime startTime = DateTime.MinValue;
-            DateTime? endTime = null;
             string model = "unknown";
             int totalSteps = 0;
             int totalTokens = 0;
@@ -183,12 +147,8 @@ public class SessionManager
             var filesChanged = new List<string>();
             string? firstPrompt = null;
 
-            foreach (var line in lines)
+            foreach (var entry in entries)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                var entry = JsonSerializer.Deserialize<JsonlEntry>(line, JsonOpts);
-                if (entry == null) continue;
-
                 switch (entry.Type)
                 {
                     case "session_start":
@@ -196,28 +156,24 @@ public class SessionManager
                         model = entry.Model ?? "unknown";
                         break;
                     case "session_end":
-                        if (entry.Timestamp != null)
-                        {
-                            if (DateTime.TryParse(entry.Timestamp, out var et))
-                                endTime = et;
-                        }
                         success = entry.Success ?? false;
                         totalSteps = entry.Steps ?? 0;
                         totalTokens = entry.TotalTokens ?? 0;
                         thinkingTokens = entry.ThinkingTokens ?? 0;
-                        durationSec = entry.DurationSec ?? 0;
+                        if (double.TryParse(entry.DurationSec, out var ds))
+                            durationSec = ds;
                         if (entry.FilesChanged != null)
                             filesChanged = entry.FilesChanged;
                         break;
                     case "step":
-                        if (firstPrompt == null && entry.Role == "user" && entry.Content != null)
-                            firstPrompt = entry.Content;
+                        if (firstPrompt == null && entry.Preview != null)
+                            firstPrompt = entry.Preview;
                         break;
                 }
             }
 
             return new SessionSummary(
-                Path.GetFileName(filePath), startTime, endTime, model,
+                filePath, startTime, model,
                 totalSteps, totalTokens, thinkingTokens, success,
                 durationSec, filesChanged, firstPrompt);
         }
@@ -225,25 +181,6 @@ public class SessionManager
         {
             return null;
         }
-    }
-
-    private static List<(string Role, string? Content)> ParseSteps(string filePath)
-    {
-        var steps = new List<(string Role, string? Content)>();
-
-        try
-        {
-            foreach (var line in File.ReadAllLines(filePath))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                var entry = JsonSerializer.Deserialize<JsonlEntry>(line, JsonOpts);
-                if (entry?.Type == "step" && entry.Role != null)
-                    steps.Add((entry.Role, entry.Content));
-            }
-        }
-        catch { }
-
-        return steps;
     }
 
     private static string FormatTokens(int tokens)

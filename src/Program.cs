@@ -55,11 +55,12 @@ class Program
             console.MarkupLine("[yellow]Use :quit to exit.[/]");
         };
 
-        var observer = new TuiObserver();
+        var observer = new TuiObserver(_tuiConfig);
         Agent? agent = null;
+        SessionLogger? logger = null;
 
         // Helper to create/recreate the agent when model changes or on reset
-        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer);
+        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer, _tuiConfig);
 
         while (true)
         {
@@ -75,15 +76,34 @@ class Program
             // Commands
             if (input.StartsWith(':'))
             {
-                var (result, newModel) = await HandleCommand(input, console, resolved, observer, agent, workingDir);
-                if (result == CmdResult.Quit) break;
-                if (result == CmdResult.Reset) { observer = new TuiObserver(); agent = null; }
-                if (newModel != null) { resolved = newModel; agent = null; } // new model = new agent
+                var cmdResult = await HandleCommand(
+                    input, console, resolved, observer, agent, workingDir);
+                if (cmdResult.Result == CmdResult.Quit) break;
+                if (cmdResult.ResetAgent)
+                {
+                    observer = new TuiObserver(_tuiConfig);
+                    agent = null;
+                    if (cmdResult.DisposeLogger)
+                    {
+                        logger?.Dispose();
+                        logger = null;
+                    }
+                }
+                if (cmdResult.NewModel != null)
+                {
+                    resolved = cmdResult.NewModel;
+                    agent = null;
+                    // Reset observer on model switch -- don't carry over tokens/steps
+                    observer = new TuiObserver(_tuiConfig);
+                }
                 continue;
             }
 
             // Create agent on first prompt or after reset/model switch
             agent ??= CreateAgent();
+
+            // Create session logger on first prompt (persists until :reset or model switch)
+            logger ??= new SessionLogger(modelId, workingDir);
 
             // Run agent
             console.WriteLine();
@@ -95,7 +115,6 @@ class Program
                 _pendingSkillContent = null;
             }
 
-            var logger = new SessionLogger(modelId, workingDir);
             using var cts = new CancellationTokenSource();
 
             // Clear the raw input lines that InputHandler echoed during typing
@@ -116,7 +135,9 @@ class Program
             // Set up tool interceptor for git checkpoints + diff snapshots
             agent.Control.ToolInterceptor = call =>
             {
-                if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
+                if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase) ||
+                    call.Name.Equals("edit", StringComparison.OrdinalIgnoreCase) ||
+                    call.Name.Equals("patch", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
@@ -142,8 +163,9 @@ class Program
             AgentResult? result2 = null;
             var agentRef = agent;
 
-            // Redirect stderr so core's Console.Error.WriteLine doesn't
-            // corrupt the Spectre spinner display
+            // Safety net: capture any remaining Console.Error output from core
+            // (most errors now route through observer.OnError, but fallback Console.Error
+            // calls still exist for when no observer is available)
             var originalStderr = Console.Error;
             var stderrCapture = new StringWriter();
             Console.SetError(stderrCapture);
@@ -154,7 +176,10 @@ class Program
                     .Spinner(Spinner.Known.Dots)
                     .StartAsync($"Running {resolved!.ModelId}...", async ctx =>
                     {
-                        var task = agentRef.RunAsync(effectiveInput, cts.Token);
+                        // Multi-turn: preserve history for follow-up turns
+                        var isFirstTurn = agentRef.History.Count == 0;
+                        var task = agentRef.RunAsync(effectiveInput, cts.Token,
+                            clearHistory: isFirstTurn);
                         while (!task.IsCompleted)
                         {
                             observer.Drain(console);
@@ -177,21 +202,20 @@ class Program
             finally
             {
                 Console.SetError(originalStderr);
-                logger.Dispose();
             }
 
-            // Show captured stderr as clean error messages (deduplicate, limit)
+            // Show captured stderr as clean error messages
+            // (don't deduplicate -- repeated errors are meaningful)
             var stderrLines = stderrCapture.ToString()
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(l => l.Trim())
                 .Where(l => l.Length > 0)
-                .Distinct()
-                .Take(5)
+                .Take(10)
                 .ToList();
             foreach (var line in stderrLines)
             {
-                var msg = line.Length > 120 ? line[..120] + "..." : line;
-                console.MarkupLine($"[red]! {Markup.Escape(msg)}[/]");
+                var msg = line.Length > 200 ? line[..200] + "..." : line;
+                console.MarkupLine($"[red][stderr] {Markup.Escape(msg)}[/]");
             }
 
             sw.Stop();
@@ -200,17 +224,27 @@ class Program
             if (result2 != null)
             {
                 StatusBar.RenderDone(console, modelId, result2, observer.CurrentStep, sw.ElapsedMilliseconds, observer);
-                // Don't reset observer -- keep conversation history for next turn
-                // Observer will be reset on :reset or :model switch
+
+                // Auto-show diffs if configured and files were changed
+                if (_tuiConfig.AutoShowDiffs && result2.FilesChanged.Count > 0)
+                {
+                    var lastFile = result2.FilesChanged.LastOrDefault();
+                    if (lastFile != null)
+                        DiffViewer.ShowLastDiff(console, lastFile);
+                }
             }
         }
 
+        logger?.Dispose();
         return 0;
     }
 
     private enum CmdResult { Continue, Quit, Reset }
 
-    private static async Task<(CmdResult Result, ResolvedModel? NewModel)> HandleCommand(
+    private record CmdHandleResult(CmdResult Result, ResolvedModel? NewModel = null,
+        bool ResetAgent = false, bool DisposeLogger = false);
+
+    private static async Task<CmdHandleResult> HandleCommand(
         string input, IAnsiConsole console, ResolvedModel? resolved,
         TuiObserver observer, Agent? agent, string workingDir)
     {
@@ -222,7 +256,7 @@ class Program
         {
             case ":quit" or ":q" or ":exit":
                 console.MarkupLine("[dim]Goodbye![/]");
-                return (CmdResult.Quit, null);
+                return new CmdHandleResult(CmdResult.Quit);
 
             case ":model":
                 ResolvedModel? newResolved;
@@ -238,26 +272,26 @@ class Program
                 }
                 if (newResolved != null)
                     console.MarkupLine($"[green]Switched to {newResolved.ModelId}[/]");
-                return (CmdResult.Continue, newResolved);
+                return new CmdHandleResult(CmdResult.Continue, newResolved);
 
             case ":tokens":
                 if (agent != null && resolved != null)
                     TokenBudget.Render(console, agent.History, resolved.ContextWindow, observer.TotalTokens, observer.TotalThinkingTokens);
                 else
                     console.MarkupLine("[dim]No conversation yet.[/]");
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":history":
                 if (agent?.History.Count > 0) RenderHistory(console, agent.History);
                 else console.MarkupLine("[dim]No conversation history yet.[/]");
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":sessions":
                 if (!string.IsNullOrEmpty(arg) && int.TryParse(arg, out var sessionIdx))
                     SessionManager.ShowSession(console, sessionIdx);
                 else
                     SessionManager.BrowseSessions(console);
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":skills":
                 var skillContent = SkillBrowser.Browse(console, workingDir);
@@ -266,7 +300,7 @@ class Program
                     _pendingSkillContent = skillContent;
                     console.MarkupLine("[dim]Skill loaded. It will be prepended to your next prompt.[/]");
                 }
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":diff":
                 if (agent != null)
@@ -279,19 +313,19 @@ class Program
                     else console.MarkupLine("[dim]No file writes in this session.[/]");
                 }
                 else console.MarkupLine("[dim]No conversation yet.[/]");
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":arena":
                 console.MarkupLine("[bold]Select two models for arena mode:[/]");
                 console.MarkupLine("[dim]Model 1:[/]");
                 var m1 = ModelSelector.Select(console);
-                if (m1 == null) return (CmdResult.Continue, null);
+                if (m1 == null) return new CmdHandleResult(CmdResult.Continue);
                 console.MarkupLine("[dim]Model 2:[/]");
                 var m2 = ModelSelector.Select(console);
-                if (m2 == null) return (CmdResult.Continue, null);
+                if (m2 == null) return new CmdHandleResult(CmdResult.Continue);
                 var arenaPrompt = console.Prompt(new TextPrompt<string>("[bold]Arena prompt:[/]"));
-                await ModelArena.RunArena(console, arenaPrompt, m1, m2, workingDir);
-                return (CmdResult.Continue, null);
+                await ModelArena.RunArena(console, arenaPrompt, m1, m2, workingDir, _tuiConfig);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":config":
                 console.MarkupLine("[bold]TUI Config[/] [dim](~/.little_helper/tui.json)[/]");
@@ -304,20 +338,22 @@ class Program
                 console.MarkupLine($"  [blue]streaming[/]:           {_tuiConfig.Streaming}");
                 console.MarkupLine($"  [blue]git_checkpoint[/]:      {_tuiConfig.GitCheckpoint}");
                 console.MarkupLine($"  [blue]theme[/]:               {_tuiConfig.Theme}");
-                console.MarkupLine("");
+                console.MarkupLine($"  [blue]verbose[/]:             {_tuiConfig.Verbose}");
+                console.WriteLine();
                 console.MarkupLine("[dim]Edit ~/.little_helper/tui.json to change settings.[/]");
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":reset":
+                agent?.ClearHistory();
                 console.MarkupLine("[dim]Conversation reset.[/]");
-                return (CmdResult.Reset, null);
+                return new CmdHandleResult(CmdResult.Reset, ResetAgent: true, DisposeLogger: true);
 
             case ":help":
                 console.MarkupLine("[bold]Commands:[/]");
-                console.MarkupLine("  [blue]:model [name][/]   Switch model");
+                console.MarkupLine("  [blue]:model[/] [name]   Switch model");
                 console.MarkupLine("  [blue]:tokens[/]         Show token budget");
                 console.MarkupLine("  [blue]:history[/]        Show conversation history");
-                console.MarkupLine("  [blue]:sessions [N][/]   Browse sessions / show session #N");
+                console.MarkupLine("  [blue]:sessions[/] [N]   Browse sessions / show session #N");
                 console.MarkupLine("  [blue]:skills[/]         Browse and inject skills");
                 console.MarkupLine("  [blue]:diff[/]           Show diff for last file write");
                 console.MarkupLine("  [blue]:arena[/]          A/B test two models side-by-side");
@@ -325,13 +361,13 @@ class Program
                 console.MarkupLine("  [blue]:reset[/]          Reset conversation");
                 console.MarkupLine("  [blue]:help[/]           Show this help");
                 console.MarkupLine("  [blue]:quit[/]           Exit");
-                console.MarkupLine("");
-                console.MarkupLine("[dim]During agent run: Space=pause/resume, Ctrl+C=cancel[/]");
-                return (CmdResult.Continue, null);
+                console.WriteLine();
+                console.MarkupLine("[dim]During agent run: Ctrl+C = cancel[/]");
+                return new CmdHandleResult(CmdResult.Continue);
 
             default:
                 console.MarkupLine($"[red]Unknown command: {Markup.Escape(cmd)}[/]  Type [blue]:help[/] for commands");
-                return (CmdResult.Continue, null);
+                return new CmdHandleResult(CmdResult.Continue);
         }
     }
 

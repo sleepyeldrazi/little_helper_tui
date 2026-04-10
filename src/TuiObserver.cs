@@ -17,6 +17,12 @@ public class TuiObserver : IAgentObserver
     private readonly StringBuilder _streamingThinking = new();
     private bool _isStreaming;
 
+    // Config-driven display settings
+    private readonly string _thinkingMode;       // "full", "condensed", "hidden"
+    private readonly int _maxToolOutputLines;    // replaces hardcoded limits
+    private readonly string _theme;              // "default", "monochrome", "dark"
+    private readonly bool _verbose;              // show > pending calls and state transitions
+
     public int CurrentStep { get; private set; }
     public AgentState CurrentState { get; private set; } = AgentState.Planning;
     public int TotalTokens { get; private set; }
@@ -37,6 +43,25 @@ public class TuiObserver : IAgentObserver
                 return text.Replace("\n", " ").Trim();
             }
         }
+    }
+
+    public TuiObserver(TuiConfig? config = null)
+    {
+        config ??= new TuiConfig();
+        _thinkingMode = config.ThinkingMode;
+        _maxToolOutputLines = config.MaxToolOutputLines;
+        _theme = config.Theme;
+        _verbose = config.Verbose;
+    }
+
+    /// <summary>Reset observer state (for model switches and :reset).</summary>
+    public void Reset()
+    {
+        TotalTokens = 0;
+        TotalThinkingTokens = 0;
+        CurrentStep = 0;
+        CurrentState = AgentState.Planning;
+        lock (_lock) { _renderQueue.Clear(); }
     }
 
     /// <summary>Drain and render all queued events to the console.</summary>
@@ -68,20 +93,28 @@ public class TuiObserver : IAgentObserver
 
         lock (_lock)
         {
-            // Show thinking if present
-            if (!string.IsNullOrEmpty(response.ThinkingContent))
+            // Show thinking if present and mode allows
+            if (!string.IsNullOrEmpty(response.ThinkingContent) && _thinkingMode != "hidden")
             {
                 _renderQueue.Add(console =>
                 {
                     var thinking = response.ThinkingContent;
-                    var lines = thinking.Split('\n');
                     string preview;
-                    if (lines.Length <= 8)
+
+                    if (_thinkingMode == "full")
+                    {
                         preview = thinking;
-                    else
-                        preview = string.Join('\n', lines.Take(3))
-                            + "\n  ..."
-                            + "\n" + string.Join('\n', lines.TakeLast(3));
+                    }
+                    else // "condensed" (default)
+                    {
+                        var lines = thinking.Split('\n');
+                        if (lines.Length <= 8)
+                            preview = thinking;
+                        else
+                            preview = string.Join('\n', lines.Take(3))
+                                + "\n  ..."
+                                + "\n" + string.Join('\n', lines.TakeLast(3));
+                    }
 
                     var thinkingPanel = new Panel(Markup.Escape(preview))
                         .Header($"[dim]Thinking[/] [dim]({response.ThinkingTokens} tokens)[/]")
@@ -106,8 +139,8 @@ public class TuiObserver : IAgentObserver
                 });
             }
 
-            // Show tool calls summary
-            if (response.ToolCalls.Count > 0)
+            // Show tool calls summary (pending > lines) — only in verbose mode
+            if (_verbose && response.ToolCalls.Count > 0)
             {
                 _renderQueue.Add(console =>
                 {
@@ -125,7 +158,8 @@ public class TuiObserver : IAgentObserver
 
     public ToolCall? OnToolCallExecuting(ToolCall call, int step)
     {
-        // Diff snapshotting is handled by InterventionManager's ToolInterceptor
+        // No-op: the actual interception pipeline goes through
+        // AgentControl.ToolInterceptor (set in Program.cs).
         return call;
     }
 
@@ -149,10 +183,13 @@ public class TuiObserver : IAgentObserver
                 if (result.IsError)
                 {
                     // Errors: show in red, truncated
-                    var errText = output.Length > 200 ? output[..200] + "..." : output;
+                    var maxErr = Math.Max(200, _maxToolOutputLines * 40);
+                    var errText = output.Length > maxErr ? output[..maxErr] + "..." : output;
                     console.MarkupLine($"  [red]{Markup.Escape(errText)}[/]");
                 }
-                else if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
+                else if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase) ||
+                         call.Name.Equals("edit", StringComparison.OrdinalIgnoreCase) ||
+                         call.Name.Equals("patch", StringComparison.OrdinalIgnoreCase))
                 {
                     RenderWriteOutput(console, output);
                 }
@@ -162,8 +199,9 @@ public class TuiObserver : IAgentObserver
                 }
                 else
                 {
-                    // Generic: show compact (max 5 lines)
-                    RenderCompactOutput(console, output, 5);
+                    // Generic: show compact
+                    var maxLines = Math.Max(3, _maxToolOutputLines / 4);
+                    RenderCompactOutput(console, output, maxLines);
                 }
 
                 console.WriteLine();
@@ -191,30 +229,18 @@ public class TuiObserver : IAgentObserver
         // Multi-line content: show with +/- markers
         var lines = output.Split('\n');
         var maxShow = 8;
-        var shown = 0;
 
-        foreach (var line in lines)
+        foreach (var line in lines.Take(maxShow))
         {
-            if (shown >= maxShow) break;
-
             var escaped = Markup.Escape(line);
             if (line.StartsWith("+") && !line.StartsWith("++"))
-            {
                 console.MarkupLine($"  [green]+{escaped[1..]}[/]");
-            }
             else if (line.StartsWith("-") && !line.StartsWith("--"))
-            {
                 console.MarkupLine($"  [red]-{escaped[1..]}[/]");
-            }
             else if (line.StartsWith("@@"))
-            {
                 console.MarkupLine($"  [cyan]{escaped}[/]");
-            }
             else
-            {
                 console.MarkupLine($"  [dim]{escaped}[/]");
-            }
-            shown++;
         }
 
         var remaining = lines.Length - maxShow;
@@ -295,9 +321,60 @@ public class TuiObserver : IAgentObserver
         {
             _renderQueue.Add(console =>
             {
-                console.MarkupLine($"[red]! {Markup.Escape(message)}[/]");
+                RenderLogMessage(console, message);
             });
         }
+    }
+
+    /// <summary>
+    /// Render a log message from core's Agent.Log() / observer routing.
+    /// Categorizes by prefix to use appropriate styling:
+    /// - [State] / [Step] / [Done] -> dim (informational), hidden unless verbose
+    /// - WARN: -> yellow (warning)
+    /// - ERROR: / Model API error / actual failures -> red (error)
+    /// - tool execution detail lines -> suppressed (redundant with OnToolCallCompleted)
+    /// </summary>
+    private void RenderLogMessage(IAnsiConsole console, string message)
+    {
+        var escaped = Markup.Escape(message);
+
+        // Tool execution detail (redundant with OnToolCallCompleted display)
+        // Always suppress — the + line already shows name + args + timing + output
+        if (message.StartsWith("  "))
+            return;
+
+        // Informational: state transitions, step progress, completion
+        if (message.StartsWith("[State]") || message.StartsWith("[Step") || message.StartsWith("[Done]"))
+        {
+            // Always show stall/limit/error recovery states regardless of verbose
+            if (message.Contains("Stall detected") || message.Contains("Step limit") ||
+                message.Contains("Error recovery") || message.Contains("Max error recovery"))
+            {
+                console.MarkupLine($"[yellow]{escaped}[/]");
+                return;
+            }
+            // verbose-only for routine state/step/done messages
+            if (_verbose)
+                console.MarkupLine($"[dim]{escaped}[/]");
+            return;
+        }
+
+        // Warnings
+        if (message.StartsWith("WARN:") || message.StartsWith("WARN "))
+        {
+            console.MarkupLine($"[yellow]{escaped}[/]");
+            return;
+        }
+
+        // Injected messages
+        if (message.StartsWith("[Injected]"))
+        {
+            console.MarkupLine($"[dim][yellow]{escaped}[/][/]");
+            return;
+        }
+
+        // Everything else: actual errors
+        console.MarkupLine($"[red]{escaped}[/]");
     }
 
     public void OnStreamChunk(string contentDelta, string? thinkingDelta)
@@ -317,26 +394,9 @@ public class TuiObserver : IAgentObserver
 
     // --- Helpers ---
 
+    // Use core's public formatter so new tools are handled automatically
     private static string FormatToolArgs(string toolName, System.Text.Json.JsonElement args)
-    {
-        try
-        {
-            return toolName.ToLowerInvariant() switch
-            {
-                "read" => args.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "",
-                "write" => args.TryGetProperty("path", out var w) ? w.GetString() ?? "" : "",
-                "run" or "bash" => args.TryGetProperty("command", out var c)
-                    ? Truncate(c.GetString() ?? "", 80) : "",
-                "search" => args.TryGetProperty("pattern", out var s)
-                    ? $"\"{s.GetString()}\"" : "",
-                _ => Truncate(args.GetRawText(), 60)
-            };
-        }
-        catch { return ""; }
-    }
-
-    private static string Truncate(string s, int maxLen) =>
-        s.Length <= maxLen ? s : s[..maxLen] + "...";
+        => Agent.FormatToolDetail(toolName, args);
 
     private static string FormatDuration(long ms) =>
         ms < 1000 ? $"{ms}ms" : $"{ms / 1000.0:F1}s";
