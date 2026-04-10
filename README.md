@@ -169,6 +169,12 @@ TUI settings in `~/.little_helper/tui.json`:
 
 ---
 
+## Prerequisites
+
+- .NET 8 SDK (`dotnet --version` should show 8.x)
+- A running model endpoint (Ollama, OpenRouter, etc.)
+- Model config at `~/.little_helper/models.json` (run `little_helper_core` once to generate a default)
+
 ## Setup
 
 ```bash
@@ -176,6 +182,14 @@ git clone --recurse-submodules https://github.com/sleepyeldrazi/little_helper_tu
 cd little_helper_tui
 dotnet build
 ```
+
+## Run
+
+```bash
+dotnet run --project src
+```
+
+You'll see a model picker on startup. Pick a model, type prompts at the `>` prompt.
 
 ## Status
 
