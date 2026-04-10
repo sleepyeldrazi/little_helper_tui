@@ -20,7 +20,8 @@ public static class InputHandler
         var buf = new StringBuilder();
         int cursor = 0; // position within buf
 
-        console.Markup($"\u001b[1m{prompt}\u001b[0m ");
+        // Print prompt using raw ANSI (avoid Spectre markup parsing issues)
+        Console.Write($"\u001b[1m{prompt}\u001b[0m ");
         var promptLen = prompt.Length + 1; // visible width of "> "
 
         while (true)
@@ -124,7 +125,7 @@ public static class InputHandler
                         console.MarkupLine($"[dim]{Markup.Escape(display)}[/]");
                         if (options.Count > 20)
                             console.MarkupLine($"[dim]... and {options.Count - 20} more[/]");
-                        console.Markup($"\u001b[1m{prompt}\u001b[0m ");
+                        Console.Write($"\u001b[1m{prompt}\u001b[0m ");
                         promptLen = prompt.Length + 1;
                     }
                     else if (completed != null)
