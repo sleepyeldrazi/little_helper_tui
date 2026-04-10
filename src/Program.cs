@@ -7,9 +7,12 @@ namespace LittleHelperTui;
 class Program
 {
     private static string? _pendingSkillContent = null;
+    private static TuiConfig _tuiConfig = new();
 
     static async Task<int> Main(string[] args)
     {
+        _tuiConfig = TuiConfig.Load();
+
         var console = AnsiConsole.Console;
 
         console.Write(new FigletText("little helper")
@@ -18,7 +21,20 @@ class Program
         console.MarkupLine("[dim]Terminal UI v0.1.0[/]");
         console.WriteLine();
 
-        var resolved = ModelSelector.Select(console);
+        // Use default model from config if set, otherwise prompt
+        ResolvedModel? resolved;
+        if (!string.IsNullOrEmpty(_tuiConfig.DefaultModel))
+        {
+            resolved = ModelConfig.Load().Resolve(_tuiConfig.DefaultModel);
+            if (resolved != null)
+                console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim](from tui.json)[/]");
+            else
+                resolved = ModelSelector.Select(console);
+        }
+        else
+        {
+            resolved = ModelSelector.Select(console);
+        }
         if (resolved == null)
         {
             console.MarkupLine("[red]No model selected. Exiting.[/]");
@@ -69,7 +85,7 @@ class Program
 
             var logger = new SessionLogger(modelId, workingDir);
             using var cts = new CancellationTokenSource();
-            lastAgent = ClientFactory.CreateAgent(resolved!, workingDir, observer, logger);
+            lastAgent = ClientFactory.CreateAgent(resolved!, workingDir, observer, logger, _tuiConfig);
 
             var userPanel = new Panel(Markup.Escape(input))
                 .Header("[green]You[/]")
@@ -208,7 +224,10 @@ class Program
                 return (CmdResult.Continue, null);
 
             case ":sessions":
-                SessionManager.BrowseSessions(console);
+                if (!string.IsNullOrEmpty(arg) && int.TryParse(arg, out var sessionIdx))
+                    SessionManager.ShowSession(console, sessionIdx);
+                else
+                    SessionManager.BrowseSessions(console);
                 return (CmdResult.Continue, null);
 
             case ":skills":
@@ -245,22 +264,36 @@ class Program
                 await ModelArena.RunArena(console, arenaPrompt, m1, m2, workingDir);
                 return (CmdResult.Continue, null);
 
+            case ":config":
+                console.MarkupLine("[bold]TUI Config[/] [dim](~/.little_helper/tui.json)[/]");
+                console.MarkupLine($"  [blue]thinking_mode[/]:       {_tuiConfig.ThinkingMode}");
+                console.MarkupLine($"  [blue]show_token_budget[/]:   {_tuiConfig.ShowTokenBudget}");
+                console.MarkupLine($"  [blue]auto_show_diffs[/]:      {_tuiConfig.AutoShowDiffs}");
+                console.MarkupLine($"  [blue]max_tool_output_lines[/]: {_tuiConfig.MaxToolOutputLines}");
+                console.MarkupLine($"  [blue]max_steps[/]:           {_tuiConfig.MaxSteps}");
+                console.MarkupLine($"  [blue]default_model[/]:       {_tuiConfig.DefaultModel ?? "(none)"}");
+                console.MarkupLine($"  [blue]theme[/]:               {_tuiConfig.Theme}");
+                console.MarkupLine("");
+                console.MarkupLine("[dim]Edit ~/.little_helper/tui.json to change settings.[/]");
+                return (CmdResult.Continue, null);
+
             case ":reset":
                 console.MarkupLine("[dim]Conversation reset.[/]");
                 return (CmdResult.Reset, null);
 
             case ":help":
                 console.MarkupLine("[bold]Commands:[/]");
-                console.MarkupLine("  [blue]:model [name][/]  Switch model");
-                console.MarkupLine("  [blue]:tokens[/]        Show token budget");
-                console.MarkupLine("  [blue]:history[/]       Show conversation history");
-                console.MarkupLine("  [blue]:sessions[/]      Browse past sessions");
-                console.MarkupLine("  [blue]:skills[/]        Browse and inject skills");
-                console.MarkupLine("  [blue]:diff[/]          Show diff for last file write");
-                console.MarkupLine("  [blue]:arena[/]         A/B test two models side-by-side");
-                console.MarkupLine("  [blue]:reset[/]         Reset conversation");
-                console.MarkupLine("  [blue]:help[/]          Show this help");
-                console.MarkupLine("  [blue]:quit[/]          Exit");
+                console.MarkupLine("  [blue]:model [name][/]   Switch model");
+                console.MarkupLine("  [blue]:tokens[/]         Show token budget");
+                console.MarkupLine("  [blue]:history[/]        Show conversation history");
+                console.MarkupLine("  [blue]:sessions [N][/]   Browse sessions / show session #N");
+                console.MarkupLine("  [blue]:skills[/]         Browse and inject skills");
+                console.MarkupLine("  [blue]:diff[/]           Show diff for last file write");
+                console.MarkupLine("  [blue]:arena[/]          A/B test two models side-by-side");
+                console.MarkupLine("  [blue]:config[/]         Show TUI config");
+                console.MarkupLine("  [blue]:reset[/]          Reset conversation");
+                console.MarkupLine("  [blue]:help[/]           Show this help");
+                console.MarkupLine("  [blue]:quit[/]           Exit");
                 console.MarkupLine("");
                 console.MarkupLine("[dim]During agent run: Space=pause/resume, Ctrl+C=cancel[/]");
                 return (CmdResult.Continue, null);

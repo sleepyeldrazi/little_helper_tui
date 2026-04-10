@@ -4,24 +4,33 @@ using LittleHelper;
 namespace LittleHelperTui;
 
 /// <summary>
-/// Builds core objects (Agent, ModelClient, ToolExecutor) from a resolved model config.
-/// Centralizes the wiring so the main loop doesn't deal with construction details.
+/// Builds core objects from a resolved model config.
+/// Routes to ModelClient (OpenAI) or AnthropicClient based on ApiType.
 /// </summary>
 public static class ClientFactory
 {
     /// <summary>
-    /// Create a fully wired (ModelClient, ToolExecutor) pair ready for agent use.
-    /// Registers all 5 standard tool schemas. Passes provider headers to ModelClient.
+    /// Create the right IModelClient based on resolved.ApiType.
+    /// Registers all 5 standard tool schemas.
     /// </summary>
-    public static (ModelClient client, ToolExecutor tools) Create(
+    public static (IModelClient client, ToolExecutor tools) Create(
         ResolvedModel resolved, string workingDir)
     {
-        var client = new ModelClient(
-            resolved.BaseUrl,
-            resolved.ModelId,
-            resolved.Temperature,
-            string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
-            resolved.Headers);
+        IModelClient client = resolved.ApiType.ToLowerInvariant() switch
+        {
+            "anthropic" or "anthropic-messages" => new AnthropicClient(
+                resolved.BaseUrl,
+                resolved.ModelId,
+                resolved.Temperature,
+                string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                resolved.Headers),
+            _ => new ModelClient(
+                resolved.BaseUrl,
+                resolved.ModelId,
+                resolved.Temperature,
+                string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                resolved.Headers)
+        };
 
         ToolSchemas.RegisterAll(client);
 
@@ -31,21 +40,23 @@ public static class ClientFactory
     }
 
     /// <summary>
-    /// Create a fully wired Agent with observer and logger.
+    /// Create a fully wired Agent with observer, logger, and config from tui.json.
     /// </summary>
     public static Agent CreateAgent(ResolvedModel resolved, string workingDir,
-        TuiObserver observer, SessionLogger? logger = null)
+        TuiObserver observer, SessionLogger? logger = null, TuiConfig? tuiConfig = null)
     {
         var (client, tools) = Create(resolved, workingDir);
 
         var skills = new SkillDiscovery();
         skills.Discover(workingDir);
 
+        var maxSteps = tuiConfig?.MaxSteps ?? 30;
+
         var config = new AgentConfig(
             ModelEndpoint: resolved.BaseUrl,
             ModelName: resolved.ModelId,
             MaxContextTokens: resolved.ContextWindow,
-            MaxSteps: 30,
+            MaxSteps: maxSteps,
             MaxRetries: 2,
             StallThreshold: 5,
             WorkingDirectory: workingDir,
