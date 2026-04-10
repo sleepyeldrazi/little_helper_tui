@@ -141,26 +141,135 @@ public class TuiObserver : IAgentObserver
 
                 // Tool result header
                 var header = $"[{color}]{icon} {call.Name}[/] [dim]({FormatDuration(durationMs)})[/]";
+                console.MarkupLine(header);
+                console.MarkupLine($"  [grey]{Markup.Escape(detail)}[/]");
 
-                // Result content
+                // Render output based on tool type
                 var output = result.Output;
-                if (output.Length > 300)
-                    output = output[..300] + "...";
+                if (result.IsError)
+                {
+                    // Errors: show in red, truncated
+                    var errText = output.Length > 200 ? output[..200] + "..." : output;
+                    console.MarkupLine($"  [red]{Markup.Escape(errText)}[/]");
+                }
+                else if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
+                {
+                    RenderWriteOutput(console, output);
+                }
+                else if (call.Name.Equals("read", StringComparison.OrdinalIgnoreCase))
+                {
+                    RenderReadOutput(console, output);
+                }
+                else
+                {
+                    // Generic: show compact (max 5 lines)
+                    RenderCompactOutput(console, output, 5);
+                }
 
-                var lines = new Rows(
-                    new Markup(header),
-                    new Markup($"  [grey]{Markup.Escape(detail)}[/]"),
-                    new Markup($"  [dim]{Markup.Escape(output)}[/]")
-                );
-
-                var panel = new Panel(lines)
-                    .Border(BoxBorder.None)
-                    .Expand()
-                    .Padding(1, 0, 0, 0);
-                console.Write(panel);
                 console.WriteLine();
             });
         }
+    }
+
+    /// <summary>Render write output with git-style +/- diff markers.</summary>
+    private static void RenderWriteOutput(IAnsiConsole console, string output)
+    {
+        if (string.IsNullOrEmpty(output))
+        {
+            console.MarkupLine("  [dim](empty)[/]");
+            return;
+        }
+
+        // Check if the output looks like diff content or just a confirmation
+        if (output.Contains("wrote") || output.Contains("written") || output.Length < 100)
+        {
+            // Short confirmation message
+            console.MarkupLine($"  [green]{Markup.Escape(output)}[/]");
+            return;
+        }
+
+        // Multi-line content: show with +/- markers
+        var lines = output.Split('\n');
+        var maxShow = 8;
+        var shown = 0;
+
+        foreach (var line in lines)
+        {
+            if (shown >= maxShow) break;
+
+            var escaped = Markup.Escape(line);
+            if (line.StartsWith("+") && !line.StartsWith("++"))
+            {
+                console.MarkupLine($"  [green]+{escaped[1..]}[/]");
+            }
+            else if (line.StartsWith("-") && !line.StartsWith("--"))
+            {
+                console.MarkupLine($"  [red]-{escaped[1..]}[/]");
+            }
+            else if (line.StartsWith("@@"))
+            {
+                console.MarkupLine($"  [cyan]{escaped}[/]");
+            }
+            else
+            {
+                console.MarkupLine($"  [dim]{escaped}[/]");
+            }
+            shown++;
+        }
+
+        var remaining = lines.Length - maxShow;
+        if (remaining > 0)
+            console.MarkupLine($"  [dim]... {remaining} more lines[/]");
+    }
+
+    /// <summary>Render read output: show path + line count + first few lines.</summary>
+    private static void RenderReadOutput(IAnsiConsole console, string output)
+    {
+        if (string.IsNullOrEmpty(output))
+        {
+            console.MarkupLine("  [dim](empty)[/]");
+            return;
+        }
+
+        var lines = output.Split('\n');
+        var maxShow = 6;
+
+        // Show file stats
+        console.MarkupLine($"  [dim]{lines.Length} lines[/]");
+
+        // Show first few lines
+        foreach (var line in lines.Take(maxShow))
+        {
+            var escaped = Markup.Escape(line);
+            if (escaped.Length > 120) escaped = escaped[..120] + "...";
+            console.MarkupLine($"  [dim]{escaped}[/]");
+        }
+
+        var remaining = lines.Length - maxShow;
+        if (remaining > 0)
+            console.MarkupLine($"  [dim]... {remaining} more lines[/]");
+    }
+
+    /// <summary>Render generic output compactly.</summary>
+    private static void RenderCompactOutput(IAnsiConsole console, string output, int maxLines)
+    {
+        if (string.IsNullOrEmpty(output))
+        {
+            console.MarkupLine("  [dim](empty)[/]");
+            return;
+        }
+
+        var lines = output.Split('\n');
+        foreach (var line in lines.Take(maxLines))
+        {
+            var escaped = Markup.Escape(line);
+            if (escaped.Length > 120) escaped = escaped[..120] + "...";
+            console.MarkupLine($"  [dim]{escaped}[/]");
+        }
+
+        var remaining = lines.Length - maxLines;
+        if (remaining > 0)
+            console.MarkupLine($"  [dim]... {remaining} more lines[/]");
     }
 
     public void OnStateChange(AgentState from, AgentState to)
