@@ -28,7 +28,7 @@ It is built by (the not-so small) model GLM-5.1 by Z.AI. I have my notes, but a 
 
 You might notice its written in C# and not the usual typescript/python/rust trifecta that seems to have taken hold of all those tools. There is a cool benchmark, namely [AutoCodeBenchmark](https://github.com/Tencent-Hunyuan/AutoCodeBenchmark) that pinned a bunch of models against eachoter on ~200 similar tasks in a bunch of languages, and C#, somewhat surprisingly for me, was one of the best "LLM writes this correctly" languages. I decided to use that info for a project I don't plan on touching the code for too much.
 
-For the harness,I used [hermes](https://github.com/NousResearch/hermes-agent) in this particular project. I like it so far. The main issue I have with it is that it has a lot of bloat for my usual needs. 
+For the harness, I used [hermes](https://github.com/NousResearch/hermes-agent) in this particular project. I like it so far. The main issue I have with it is that it has a lot of bloat for my usual needs. 
 
 ## Personal workflow with LLMs
 
