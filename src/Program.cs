@@ -8,12 +8,18 @@ class Program
 {
     private static string? _pendingSkillContent = null;
     private static TuiConfig _tuiConfig = new();
+    private static GitCheckpoint? _gitCheckpoint;
 
     static async Task<int> Main(string[] args)
     {
         _tuiConfig = TuiConfig.Load();
 
         var console = AnsiConsole.Console;
+
+        // Initialize git checkpoint service
+        _gitCheckpoint = new GitCheckpoint(
+            Directory.GetCurrentDirectory(), _tuiConfig.GitCheckpoint, console);
+        _gitCheckpoint.EnsureInitialized();
 
         console.Write(new FigletText("little helper")
             .LeftJustified()
@@ -95,7 +101,7 @@ class Program
             console.Write(userPanel);
             console.WriteLine();
 
-            // Set up tool interceptor for diff snapshots
+            // Set up tool interceptor for git checkpoints + diff snapshots
             lastAgent.Control.ToolInterceptor = call =>
             {
                 if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
@@ -106,7 +112,13 @@ class Program
                         {
                             var path = pathEl.GetString();
                             if (path != null)
-                                DiffViewer.Snapshot(Path.GetFullPath(Path.Combine(workingDir, path)));
+                            {
+                                var fullPath = Path.GetFullPath(Path.Combine(workingDir, path));
+                                // Git checkpoint before write
+                                _gitCheckpoint?.CheckpointBeforeWrite(fullPath);
+                                // Diff snapshot before write
+                                DiffViewer.Snapshot(fullPath);
+                            }
                         }
                     }
                     catch { }
@@ -276,6 +288,8 @@ class Program
                 console.MarkupLine($"  [blue]max_tool_output_lines[/]: {_tuiConfig.MaxToolOutputLines}");
                 console.MarkupLine($"  [blue]max_steps[/]:           {_tuiConfig.MaxSteps}");
                 console.MarkupLine($"  [blue]default_model[/]:       {_tuiConfig.DefaultModel ?? "(none)"}");
+                console.MarkupLine($"  [blue]streaming[/]:           {_tuiConfig.Streaming}");
+                console.MarkupLine($"  [blue]git_checkpoint[/]:      {_tuiConfig.GitCheckpoint}");
                 console.MarkupLine($"  [blue]theme[/]:               {_tuiConfig.Theme}");
                 console.MarkupLine("");
                 console.MarkupLine("[dim]Edit ~/.little_helper/tui.json to change settings.[/]");

@@ -32,6 +32,17 @@ public class TuiConfig
     [JsonPropertyName("default_model")]
     public string? DefaultModel { get; set; }
 
+    // Streaming
+    [JsonPropertyName("streaming")]
+    public bool Streaming { get; set; } = true;
+
+    // Git checkpoints before write operations
+    // "auto" = checkpoint if git is already initialized, skip otherwise
+    // "on"   = always checkpoint (git init if needed, local commits only)
+    // "off"  = never checkpoint
+    [JsonPropertyName("git_checkpoint")]
+    public string GitCheckpoint { get; set; } = "auto"; // auto, on, off
+
     // Theme
     [JsonPropertyName("theme")]
     public string Theme { get; set; } = "default"; // default, monochrome, dark

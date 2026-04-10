@@ -61,7 +61,8 @@ public static class ClientFactory
             StallThreshold: 5,
             WorkingDirectory: workingDir,
             Temperature: resolved.Temperature,
-            ApiKey: string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey);
+            ApiKey: string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+            EnableStreaming: tuiConfig?.Streaming ?? true);
 
         return new Agent(config, client, tools, skills, logger, observer);
     }

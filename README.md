@@ -25,6 +25,7 @@ little_helper_tui/
     InterventionManager.cs <- pause/resume, tool interception
     ModelArena.cs          <- A/B test two models side-by-side
     TuiConfig.cs           <- ~/.little_helper/tui.json loader
+    GitCheckpoint.cs       <- auto-commits before agent write operations
   little_helper_tui.sln
 ```
 
@@ -157,11 +158,34 @@ TUI-specific settings. Auto-generated on first run.
   "max_tool_output_lines": 20,
   "max_steps": 30,
   "default_model": null,
+  "git_checkpoint": "auto",
   "theme": "default"
 }
 ```
 
 Set `default_model` to a model id (e.g. `"qwen3:14b"`) to skip the model picker on startup.
+
+### Git Checkpoints
+
+`git_checkpoint` controls automatic snapshots before every agent write:
+
+| Mode | Behavior |
+|------|----------|
+| `"auto"` | Only checkpoints if `.git` already exists in the working directory (default) |
+| `"on"` | Always checkpoints — initializes a local git repo if needed, makes local commits |
+| `"off"` | Never checkpoints |
+
+Every time the agent calls the `write` tool, little helper stages and commits the file's current content before the overwrite. This creates a rollback point you can `git checkout` or `git diff` at any time.
+
+When set to `"on"` in a fresh directory, it runs `git init`, configures a local user, and commits the initial state. Everything stays local until you push.
+
+To undo an agent's last write:
+
+```bash
+git log --oneline        # find the checkpoint commit
+git diff HEAD~1          # see what changed
+git checkout HEAD~1 -- <file>  # restore a specific file
+```
 
 ---
 
