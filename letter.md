@@ -2,7 +2,7 @@
 
 Hi. This little project is the culmination of the last month of so of gathering research, prototyping, and testing every strategy i can find or think of regarding LLMs as agents. I will try (and potentially fail) to be brief and concise, firstly focusing on the project and what I think is interesting/important about it, then I'll expand a bit on my xp with llms for agentic work as someone who's been doing stupid project and prototypes since middleschool.
 
-*Note*: It's all my opinions and experiences. I can be wrong. I often am. I might change my mind on half of the things here in a day. This is a snapshot of where I'm at based on what I've seen so far. All projects I mentioned I adore, they are all made by amazing people and I hope they keep working on cool stuff.
+*Note*: It's all my opinions and experiences. I can be wrong. I often am. I might change my mind on half of the things here in a day. This is a snapshot of where I'm at based on what I've seen so far. All projects I mentioned I adore, they are all made by amazing people and I hope they keep working on cool stuff, so that I can keep gushing over them.
 
 
 ## Little Helper
@@ -46,7 +46,7 @@ When you treat an LLM like an intern that has all the knowledge they could possi
 
 "If you just vibecode, you get rusty and forget things". True. Very true. I also learned an amazing deal. I hate the term but I will use it as it is essentially what I've been doing if you go by the "you don't touch any of the code" definition. While I didn't edit any lines of code in this or most of my projects in the last month, I kept looking at the code that is being written the whole time. Most of it I didn't understand. A good amount I did. I couldn't read rust or go to save my life 2 weeks ago. Now I am starting to identify problematic patterns. I only used tmux with a single window, a couple of tabs inside and a couple of panes in each tab. Now i know about sockets, how good capturing tmux and sending keys is etc. You do gain a lot of "bad habbits" from vibecodding, but if you pay attention, you passively learn stuff you might have not known or forgot about. Not everyone is a terminal wizard, but now you can almost passively become one just from following a model's train of though. That is worth something.
 
-This might sound like I'm contradicting myself, but try to see the neuance. I think modern models are more than capable enough. Period. We really need to focus on making them efficient, locally runnable and provide them with frameworks and tools better suited for them.
+This might sound like I'm contradicting myself, but try to see the neuance. I think modern models are more than capable enough. Period. We really need to focus on making them efficient, locally runnable and provide them with frameworks and tools better suited for them. This is also why I am currently a fan of asian-lab models a bit more: they feel like a tool made to help you, not a machine trying to act human and replace you.
 
 An example of why I think modern models are capable enough is something from this post https://sockpuppet.org/blog/2026/03/30/vulnerability-research-is-cooked/, specifically when they mention "Is the Linux KVM hypervisor connected to the hrtimer subsystem, workqueue, or perf_event? The model knows.". I asked this qwen3.5 35B. It knew. I also asked Gemma 4 E2B and it didn't so at least I am still smarter than a 2B model.
 
@@ -56,8 +56,10 @@ With that in mind, a good example of *why* we should focus on tooling is https:/
 
 
 ## Next projects (probably)
-Orchestration. I have been thinkering with the idea for a while now, there is good research on it. I want to make it work well with small models, combining my two previous findings, namely models being good generalists out of the box and really good specialist when they are inside the correct framework for the job.
+Orchestration. I have been thinkering with the idea for a while now, there is good research on it. I want to make it work well with small models, combining my two previous findings, namely models being good generalists out of the box and really good specialist when they are inside the correct framework for the job. I think this is genuinely the "next frontier" that will shift everything. Many harnesses do this already, some do it well. I don't think it's "figured out" quite yet though.
 
 Local-first phone assistant model. I have a prototype on my github, i like it, it has major problems, needs a full rewrite. Information is moving too fast for a normal person nowadays, our phone's vram stays asleep most of the time, there might be something useful there.
+
+Get a good experience finally locally on a normal laptop. That is my main drive currently, I really want to have a useful assistant on my 24gb macbook that doesn't hallucinate code and doesn't get its context filled after reading one file. Turboquant seems to want to help me, and Gemma 4 26B as well as Qwen3.5 35B *almost* fit. But i need a harness/toolset that is optimized for those contrains (like little_helper). Its just a little too simple still, but Gemma 4 E4B is almost useable for this, its small, fast, good at tools. It does need a little more time in the oven though.
 
 
