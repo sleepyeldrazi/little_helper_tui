@@ -41,7 +41,7 @@ class Program
             observer.Drain(console);
             console.MarkupLine("[dim]──[/]");
 
-            var input = ReadInput(console);
+            var input = InputHandler.ReadLine(console);
             if (input == null) { console.MarkupLine("[dim]Goodbye![/]"); break; }
 
             input = input.Trim();
@@ -161,12 +161,6 @@ class Program
         }
 
         return 0;
-    }
-
-    private static string? ReadInput(IAnsiConsole console)
-    {
-        try { return console.Prompt(new TextPrompt<string>("[bold]>[/]").AllowEmpty()); }
-        catch { return null; }
     }
 
     private enum CmdResult { Continue, Quit, Reset }
