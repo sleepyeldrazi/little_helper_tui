@@ -1,6 +1,6 @@
 # little helper
 
-Terminal UI frontend for [little_helper_core](https://github.com/sleepyeldrazi/little_helper_core) ([submodule](./core)).
+Terminal UI frontend for [little_helper_core](https://github.com/sleepyeldrazi/little_helper_core).
 
 Spectre.Console REPL -- pick a model, type prompts, watch the agent work, intervene when needed.
 
