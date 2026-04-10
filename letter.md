@@ -6,7 +6,7 @@ Note: It's all my opinions and experiences. I can be wrong. I often am. I might 
 
 ## How this started
 
-A little over a month ago, a friend asked me to "help him out with his vibe-coded project." As a "write all the code yourself" type at that point, I mostly dismissed it, in part due to me not yet having jumped in the agentic coding sphere and not knowing where to even begin with. After deciding (against my better judgment if sleep is considered) to try Claude Code and Codex and getting blown away by their one-shot capabilities, I became (skeptically) very excited. And burned my rate limits very quickly. This immediately pushed me toward "how can I optimize this, make it not finish in 10 seconds <insert joke here> and ideally not having to rely on internet for it?". 
+A little over a month ago, a friend asked me to "help him out with his vibe-coded project." As a "write all the code yourself" type at that point, I mostly dismissed it, in part due to me not yet having jumped in the agentic coding sphere and not knowing where to even begin with. After deciding (against my better judgment if sleep is considered) to try [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) and [Codex](https://github.com/openai/codex) and getting blown away by their one-shot capabilities, I became (skeptically) very excited. And burned my rate limits very quickly. This immediately pushed me toward "how can I optimize this, make it not finish in 10 seconds <insert joke here> and ideally not having to rely on internet for it?". 
 
 ## My Research and take on the current landscape
 
@@ -16,7 +16,7 @@ The final phase of my research gathering was checking out what people think of t
 
 I kind of bin current research into two buckets: the "We need to give as many tools to the models" and "The models understand enough; give them bash and watch them do wonders." Personally, in my testing, neither is wrong per se, but it really feels like the truth is in using both. In the next section, I have examples of both, asking a "bare" chat model a highly technical question and a small model with a framework around it doubling (according to a benchmark) its coding prowess. If only both can be utilized..
 
-The harnesses I've used the most are opencode, pi, forgecode and now hermes. Pi is very heavily in the "just give it bash" camp; the other three lean toward the "have a tool/skill for every occasion." From what I gathered, which I kind of expected, smaller models (14B-35B) tend to be more coherent in pi, especially when locally hosted, and you can't afford 12k of just sys prompt + tools/skills. By comparison, pi is around 2k. Little helper is around 1k but by the time you are reading this, it's probably bigger. What I also noticed is that all 4 have tool-calling problems according to the feedback, and not only on the smaller models.
+The harnesses I've used the most are [opencode](https://github.com/opencode-ai/opencode), [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent), [forgecode](https://www.forgecode.dev/) and now [hermes](https://github.com/NousResearch/hermes-agent). Pi is very heavily in the "just give it bash" camp; the other three lean toward the "have a tool/skill for every occasion." From what I gathered, which I kind of expected, smaller models (14B-35B) tend to be more coherent in pi, especially when locally hosted, and you can't afford 12k of just sys prompt + tools/skills. By comparison, pi is around 2k. Little helper is around 1k but by the time you are reading this, it's probably bigger. What I also noticed is that all 4 have tool-calling problems according to the feedback, and not only on the smaller models.
 
 ## Little Helper
 
@@ -28,7 +28,7 @@ It is built by (the not-so small) model GLM-5.1 by Z.AI. I have my notes, but a 
 
 You might notice its written in C# and not the usual typescript/python/rust trifecta that seems to have taken hold of all those tools. There is a cool benchmark, namely [AutoCodeBenchmark](https://github.com/Tencent-Hunyuan/AutoCodeBenchmark) that pinned a bunch of models against eachoter on ~200 similar tasks in a bunch of languages, and C#, somewhat surprisingly for me, was one of the best "LLM writes this correctly" languages. I decided to use that info for a project I don't plan on touching the code for too much.
 
-For the harness,I used hermes in this particular project. I like it so far. The main issue I have with it is that it has a lot of bloat for my usual needs. 
+For the harness,I used [hermes](https://github.com/NousResearch/hermes-agent) in this particular project. I like it so far. The main issue I have with it is that it has a lot of bloat for my usual needs. 
 
 ## Personal workflow with LLMs
 
