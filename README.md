@@ -4,6 +4,8 @@ Terminal UI frontend for [little_helper_core](./core).
 
 Spectre.Console REPL -- pick a model, type prompts, watch the agent work, intervene when needed.
 
+**[Read the letter](./letter.md)** for the story behind the project -- why C#, how the architecture was researched, what works and doesn't work with LLM agents, and where this is going next.
+
 ## Architecture
 
 ```
