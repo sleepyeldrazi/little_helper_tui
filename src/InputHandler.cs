@@ -248,7 +248,13 @@ public static class InputHandler
 
         // Determine directory and prefix
         string dir, prefix;
-        if (Directory.Exists(expanded))
+        if (Directory.Exists(expanded) && !fragment.EndsWith('/'))
+        {
+            // Exact directory match without trailing slash: just add "/"
+            var completed = text[..wordStart] + fragment + "/" + afterCursor;
+            return (completed, null);
+        }
+        else if (Directory.Exists(expanded))
         {
             dir = expanded;
             prefix = "";
