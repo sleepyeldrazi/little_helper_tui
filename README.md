@@ -103,7 +103,7 @@ Type any command at the `>` prompt.
 | `:help` | Show commands |
 | `:quit` | Exit |
 
-During agent runs: **Space** = pause/resume, **Ctrl+C** = cancel.
+During agent runs: **Ctrl+C** = cancel.
 
 ---
 
@@ -191,9 +191,16 @@ When the agent writes a file, the TUI snapshots the original content. `:diff` sh
 
 `:arena` picks two models and runs them in parallel on the same prompt. Shows a comparison table (steps, tokens, time, files changed) when both finish.
 
-### Intervention
+---
 
-Press Space during a run to pause. The agent stops at the next step boundary. Resume with Space again.
+## TODO
+
+These are in the codebase but not yet fully functional:
+
+- **Intervention (Space=pause/resume)** -- key listener is wired but Spectre.Console's Status spinner captures console input, blocking `Console.KeyAvailable`. Needs a different approach (e.g. background thread with raw terminal input, or `:pause`/`:resume` commands typed in a separate pane).
+- **Auto-show diffs** -- `tui.json` has the setting but `:diff` is manual only right now.
+- **Thinking mode toggle** -- config field exists in `tui.json` but observer always renders condensed. Needs wiring to respect `thinking_mode: full/condensed/hidden`.
+- **Publish as single binary** -- `dotnet publish` command works but hasn't been tested end-to-end.
 
 ---
 
