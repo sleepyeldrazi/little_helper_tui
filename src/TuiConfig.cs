@@ -43,6 +43,10 @@ public class TuiConfig
     [JsonPropertyName("git_checkpoint")]
     public string GitCheckpoint { get; set; } = "auto"; // auto, on, off
 
+    // Sub-agents (spawn tool)
+    [JsonPropertyName("subagents")]
+    public SubAgentConfig SubAgents { get; set; } = new();
+
     // Theme
     [JsonPropertyName("theme")]
     public string Theme { get; set; } = "default"; // default, monochrome, dark
@@ -88,4 +92,25 @@ public class TuiConfig
         }
         catch { /* best effort */ }
     }
+}
+
+/// <summary>
+/// Sub-agent configuration. When enabled, the spawn tool is registered
+/// and sub-agents run in tmux panes.
+/// Model values: a model id (e.g. "qwen3:14b") or "default" to use the main model.
+/// </summary>
+public class SubAgentConfig
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+
+    // Model for quick tasks (lookup, classification, simple edits)
+    // "default" = same as the main model
+    [JsonPropertyName("small_model")]
+    public string SmallModel { get; set; } = "default";
+
+    // Model for complex tasks (multi-step analysis, planning, synthesis)
+    // "default" = same as the main model
+    [JsonPropertyName("complex_model")]
+    public string ComplexModel { get; set; } = "default";
 }
