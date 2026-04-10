@@ -480,27 +480,35 @@ Phase 9 ── needs all phases
 
 ## Estimated LOC
 
-| Phase | New Files | Est. LOC | Actual LOC |
-|-------|-----------|----------|------------|
-| 0     | 3         | 50       | 21         |
-| 1     | 3         | 200      | 139        |
-| 2     | 3         | 350      | 297        |
-| 3     | 2         | 250      | 74         |
-| 4     | 3         | 400      | 150        |
-| 5     | 3         | 300      | 106        |
-| 6     | 4         | 350      | 232        |
-| 7     | 3         | 300      | 265        |
-| 8     | 2         | 250      | 126        |
-| 9     | 0         | 100      | --         |
-| Total | 26        | ~2,550   | 1,371      |
+| Phase | New Files | Est. LOC | Actual LOC | Status |
+|-------|-----------|----------|------------|--------|
+| 0     | 3         | 50       | 21         | DONE   |
+| 1     | 3         | 200      | 91         | DONE   |
+| 2     | 3         | 350      | 279        | DONE   |
+| 3     | 2         | 250      | 114        | DONE   |
+| 4     | 3         | 400      | 255        | DONE   |
+| 5     | 3         | 300      | 106        | DONE   |
+| 6     | 4         | 350      | 232        | DONE   |
+| 7     | 3         | 300      | 322        | DONE   |
+| 8     | 2         | 250      | 126        | DONE   |
+| 9     | 1         | 100      | 80         | DONE   |
+| Extra | 3         | --       | 502        | DONE   |
+| Total | 30        | ~2,550   | 2,048      | ALL DONE |
+
+Extra files: InputHandler.cs (354), TuiConfig.cs (80), InterventionManager.cs (106) --
+not in original phase plan, added during development.
 
 ---
 
 ## Core Feature Requests (Filed)
 
-| Issue | Title | Blocks |
+| Issue | Title | Status |
 |-------|-------|--------|
-| #1 | Make types public + library output | Phase 0 |
-| #2 | Step-level events for observability | Phase 2 |
-| #3 | SSE streaming support | Phase 3 (nice to have) |
-| #4 | Conversation history + pause/resume | Phase 4-5 |
+| #1 | Make types public + library output | RESOLVED |
+| #2 | Step-level events for observability | RESOLVED |
+| #3 | SSE streaming support | RESOLVED |
+| #4 | Conversation history + pause/resume | RESOLVED |
+| #5 | Bump target framework to net10.0 | RESOLVED |
+| #7 | Add Headers to ResolvedModel | RESOLVED |
+| #8 | Expand ~ in tool file paths | RESOLVED |
+| #6 | Anthropic Messages API support | RESOLVED (in core) |

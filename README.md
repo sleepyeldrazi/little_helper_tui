@@ -2,178 +2,39 @@
 
 Terminal UI frontend for [little_helper_core](./core).
 
+Spectre.Console REPL -- pick a model, type prompts, watch the agent work, intervene when needed.
+
 ## Architecture
 
 ```
-little_helper_tui/           <- this repo
-  core/                      <- git submodule -> little_helper_core (read-only)
+little_helper_tui/
+  core/                    <- git submodule -> little_helper_core (read-only)
   src/
-    Adapters/                <- TUI-specific wrappers around core types
-      AgentRunner.cs         <- wraps Agent with events, pause/resume, streaming
-      SessionManager.cs      <- loads JSONL logs, resume/branch conversations
-      ModelPool.cs           <- multi-model switching, arena mode
-    TUI.cs                   <- Terminal.Gui / Spectre.Console frontend
-    ...
+    Program.cs             <- REPL loop, command dispatch
+    InputHandler.cs        <- custom readline with cursor editing + tab-complete
+    TuiObserver.cs         <- IAgentObserver: renders agent activity via Spectre
+    ClientFactory.cs       <- routes OpenAI/Anthropic client based on ApiType
+    ModelSelector.cs       <- model picker from ~/.little_helper/models.json
+    StatusBar.cs           <- step count, tokens, agent state
+    TokenBudget.cs         <- bar chart + table of context window usage
+    SessionManager.cs      <- browse/resume past sessions from JSONL logs
+    SkillBrowser.cs        <- browse + inject SKILL.md files
+    DiffViewer.cs          <- unified diff for agent file writes
+    InterventionManager.cs <- pause/resume, tool interception
+    ModelArena.cs          <- A/B test two models side-by-side
+    TuiConfig.cs           <- ~/.little_helper/tui.json loader
   little_helper_tui.sln
 ```
 
-The TUI references `core/src/` as a linked project (ProjectReference to `core/src/little_helper_core.csproj`).
-This gives it access to all the core types: `Agent`, `ModelClient`, `AgentResult`, `ThinkingLog`, etc.
-
-### Adapters
-
-The `Adapters/` directory contains TUI-owned code that wraps core types. Core is a read-only submodule — the TUI never modifies it directly. When an adapter needs something core doesn't provide, that's a core feature request:
-
-1. TUI adapter hits a wall (e.g. needs `Agent.ToolExecuted` event)
-2. Add the extension point to core, push to core repo
-3. Bump the submodule pointer in TUI
-4. Adapter now works
-
-**Adapter responsibilities:**
-
-| Adapter | Wraps | Purpose |
-|---------|-------|---------|
-| `AgentRunner` | `Agent` | Events on step/tool/thinking, pause/resume, cancellation |
-| `SessionManager` | JSONL logs | Load history, resume conversations, branch at checkpoints |
-| `ModelPool` | `ModelClient`, `ModelConfig` | Hot-swap models, arena mode, token budget tracking |
-
----
-
-## Design Philosophy
-
-The TUI is an **observability and control layer**, not a replacement for the agent's autonomy. It surfaces what the agent is doing, lets you steer when needed, and gets out of the way when the agent is working well.
-
-Key principles:
-- **Progressive disclosure** — deep detail is one keypress away, not in your face
-- **Non-blocking** — the agent runs; you browse, inspect, intervene
-- **Keyboard-first** — vim-style navigation, modal when appropriate
-- **Context-preserving** — restart, branch, or rewind without losing work
-
----
-
-## Core UI Layout
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  little_helper  │  Model: qwen3:14b  │  Tokens: 12.4K / 32K  │  [⚙]  [?]   │
-├──────────┬────────────────────────────────────────────┬─────────────────────┤
-│          │                                            │                     │
-│  SKILL   │                                            │    🤔 THINKING      │
-│  BROWSER │      💬 CHAT / ACTIVITY STREAM             │    ─────────────    │
-│          │                                            │                     │
-│  [verify]│  ┌────────────────────────────────────┐   │  The model is       │
-│  [refac] │  │ User: Add error handling to        │   │  analyzing the      │
-│  [test]  │  │       the file reader              │   │  FileReader class   │
-│          │  └────────────────────────────────────┘   │  structure to       │
-│  ─────── │                                            │  determine where    │
-│  SESSION │  ┌────────────────────────────────────┐   │  NullReference      │
-│  HISTORY │  │ 🔧 read("src/FileReader.cs")       │   │  exceptions might   │
-│          │  │   → 47 lines                       │   │  occur...           │
-│  [today] │  └────────────────────────────────────┘   │                     │
-│  [yest.] │                                            │  Step 3 of 8        │
-│          │  ┌────────────────────────────────────┐   │                     │
-│          │  │ ✏️  write("src/FileReader.cs")     │   │                     │
-│          │  │   +12 / -3 lines                   │   │                     │
-│          │  │   [View Diff] [Revert]             │   │                     │
-│          │  └────────────────────────────────────┘   │                     │
-├──────────┴────────────────────────────────────────────┴─────────────────────┤
-│  > _                                                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Features
-
-### Chat / Activity Stream (Center)
-- Collapsible tool calls — expand to see full output, collapse to summary
-- Syntax highlighting in code blocks
-- Inline diffs on file writes with `[View Full]` and `[Revert]`
-- Search/filter — `/pattern` to search history, `@tool` to filter by tool type
-
-### Thinking Panel (Right, Toggleable)
-- Live streaming of model reasoning from `ThinkingLog`
-- Step correlation — which thoughts belong to which step
-- Modes: Full / Condensed / Hidden
-- Export reasoning to markdown
-
-### Skill Browser (Left)
-- Lists skills from `~/.little_helper/skills/` and `./.little_helper/skills/`
-- Preview on hover, inject with Enter
-
-### Real-Time Diff Viewer
-- Unified diff when agent writes a file
-- Accept / Reject / Edit (opens `$EDITOR`)
-
-### Token Budget Visualizer
-- ASCII bar chart showing context window breakdown:
-  system prompt / user prompts / assistant text / tool outputs / thinking / available
-
-### Checkpoint & Time Travel
-- `:checkpoint "note"` — save state
-- `:rewind N` — go back N steps
-- `:branch "try this"` — fork conversation
-
-### Intervention System
-- Pause/resume with Space
-- Skip tool calls, edit arguments before execution
-- Inject redirect messages mid-loop
-
-### Model Arena
-- A/B test two models side-by-side on the same prompt
-- Compare speed, token usage, quality
-
----
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Tab` / `Shift+Tab` | Cycle focus between panels |
-| `j` / `k` | Scroll down / up |
-| `Enter` | Expand/collapse tool call |
-| `Space` | Pause / resume agent |
-| `Ctrl+T` | Toggle thinking panel |
-| `Ctrl+D` | Open diff for last write |
-| `Ctrl+S` | Save checkpoint |
-| `:` | Command mode |
-| `/` | Search mode |
-
-### Command Mode
-
-| Command | Description |
-|---------|-------------|
-| `:model [name]` | Switch model |
-| `:skill [name]` | Inject skill |
-| `:checkpoint [note]` | Save state |
-| `:rewind [n]` | Go back N steps |
-| `:export [file.md]` | Save transcript |
-| `:reset` | Start fresh conversation |
-
----
-
-## Configuration
-
-TUI settings in `~/.little_helper/tui.json`:
-
-```json
-{
-  "theme": "dark",
-  "thinking_panel_default": "condensed",
-  "auto_show_diffs": true,
-  "confirm_destructive": true,
-  "editor": "${EDITOR:-nano}",
-  "keybindings": "vim"
-}
-```
+Core is a read-only git submodule. The TUI wraps it -- when core doesn't provide something, we file an issue on the core repo.
 
 ---
 
 ## Prerequisites
 
-- .NET 8 SDK (`dotnet --version` should show 8.x)
-- A running model endpoint (Ollama, OpenRouter, etc.)
-- Model config at `~/.little_helper/models.json` (run `little_helper_core` once to generate a default)
+- .NET 10 SDK
+- A model endpoint (Ollama, OpenRouter, Kimi, Anthropic, etc.)
+- Config at `~/.little_helper/models.json`
 
 ## Setup
 
@@ -189,25 +50,157 @@ dotnet build
 dotnet run --project src
 ```
 
-You'll see a model picker on startup. Pick a model, type prompts at the `>` prompt.
+Or publish a single binary:
 
-## Status
+```bash
+dotnet publish src -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
+```
 
-Alpha. All phases implemented (0-8). Core engine complete (62 tests passing).
-TUI: 1,371 LOC across 12 source files. Build: 0 warnings, 0 errors.
+Then symlink it somewhere on your PATH:
 
-**Implemented:**
-- Model selection from `~/.little_helper/models.json`
-- REPL loop with Spectre.Console rendering
-- Live agent progress (streaming, thinking, tool calls)
-- Token budget visualization (`:tokens`)
-- Session history browser (`:sessions`)
-- Skill browser with inject (`:skills`)
-- Diff viewer for file writes (`:diff`)
-- Intervention: Space=pause/resume, Ctrl+C=cancel
-- Model arena: A/B test two models (`:arena`)
-- Command system: `:model`, `:history`, `:reset`, `:help`, `:quit`
+```bash
+ln -s $(pwd)/src/bin/Release/net10.0/linux-x64/publish/little_helper_tui ~/.local/bin/little
+```
 
 ---
 
-*The TUI should feel like a cockpit — every gauge and control within reach, but the autopilot (the agent) does the flying.*
+## Input
+
+Custom readline with full editing:
+
+| Key | Action |
+|-----|--------|
+| Left/Right | Move cursor |
+| Home/End, Ctrl+A/E | Jump to start/end |
+| Ctrl+Left/Right | Jump by word |
+| Ctrl+W | Delete word back |
+| Ctrl+U / Ctrl+K | Clear before/after cursor |
+| Tab | Complete file path (~/, ./, absolute) |
+| Up/Down | History navigation |
+| Escape | Clear line |
+| Ctrl+C / Ctrl+D | Exit |
+
+---
+
+## Commands
+
+Type any command at the `>` prompt.
+
+| Command | Description |
+|---------|-------------|
+| `:model [name]` | Switch model (picker if no name) |
+| `:tokens` | Token budget bar chart + breakdown |
+| `:history` | Conversation history table |
+| `:sessions` | Browse past sessions |
+| `:sessions N` | Show session #N with transcript |
+| `:skills` | Browse and inject skills |
+| `:diff` | Show diff for last file write |
+| `:arena` | A/B test two models |
+| `:config` | Show TUI config |
+| `:reset` | Reset conversation |
+| `:help` | Show commands |
+| `:quit` | Exit |
+
+During agent runs: **Space** = pause/resume, **Ctrl+C** = cancel.
+
+---
+
+## Configuration
+
+### `~/.little_helper/models.json`
+
+Defines model providers. Each provider has a `base_url`, optional `api_key`, `headers`, and `models` list. Supports `api_type: "openai"` (default) and `api_type: "anthropic"` for Anthropic-compatible endpoints.
+
+Example:
+
+```json
+{
+  "providers": {
+    "local": {
+      "base_url": "http://localhost:11434/v1",
+      "models": [
+        { "id": "qwen3:14b", "context_window": 32768 }
+      ]
+    },
+    "kimi-coding": {
+      "base_url": "https://api.kimi.com/coding/v1",
+      "api_key": "...",
+      "api_type": "openai",
+      "headers": { "User-Agent": "claude-cli/1.0.0" },
+      "models": [
+        { "id": "k2p5", "context_window": 131072 }
+      ]
+    },
+    "anthropic": {
+      "base_url": "https://api.anthropic.com",
+      "api_key": "...",
+      "api_type": "anthropic",
+      "models": [
+        { "id": "claude-sonnet-4-20250514", "context_window": 200000 }
+      ]
+    }
+  }
+}
+```
+
+### `~/.little_helper/tui.json`
+
+TUI-specific settings. Auto-generated on first run.
+
+```json
+{
+  "thinking_mode": "condensed",
+  "show_token_budget": true,
+  "auto_show_diffs": true,
+  "max_tool_output_lines": 20,
+  "max_steps": 30,
+  "default_model": null,
+  "theme": "default"
+}
+```
+
+Set `default_model` to a model id (e.g. `"qwen3:14b"`) to skip the model picker on startup.
+
+---
+
+## Features
+
+### Agent Loop with Live Progress
+
+The agent runs in the background. Spectre.Console renders a spinner while `TuiObserver` drains events -- tool calls, thinking, responses -- into panels as they happen. Stderr from the core is captured and shown cleanly after the run.
+
+### Token Budget
+
+`:tokens` shows a Spectre bar chart breaking down context window usage by category (system, user, assistant, tools, thinking, available) plus a table with percentages.
+
+### Session History
+
+All runs are logged as JSONL in `~/.little_helper/logs/`. `:sessions` shows a table of recent runs. `:sessions N` shows the full transcript with user/assistant messages.
+
+### Skill Injection
+
+`:skills` lists SKILL.md files from `~/.little_helper/skills/` and `./.little_helper/skills/`. Preview a skill, inject it into your next prompt.
+
+### Diff Viewer
+
+When the agent writes a file, the TUI snapshots the original content. `:diff` shows a unified diff with added/removed lines color-coded.
+
+### Model Arena
+
+`:arena` picks two models and runs them in parallel on the same prompt. Shows a comparison table (steps, tokens, time, files changed) when both finish.
+
+### Intervention
+
+Press Space during a run to pause. The agent stops at the next step boundary. Resume with Space again.
+
+---
+
+## Status
+
+Alpha. 2,048 LOC across 14 source files. Build: 0 warnings, 0 errors.
+
+Core submodule: public types, IAgentObserver, streaming, Anthropic support, pause/resume, session logging, tilde expansion in tool paths.
+
+---
+
+*The TUI should feel like a cockpit -- every gauge and control within reach, but the autopilot (the agent) does the flying.*
