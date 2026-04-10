@@ -60,6 +60,8 @@ Orchestration. I have been thinkering with the idea for a while now, there is go
 
 Local-first phone assistant model. I have a prototype on my github, i like it, it has major problems, needs a full rewrite. Information is moving too fast for a normal person nowadays, our phone's vram stays asleep most of the time, there might be something useful there.
 
+Finetunning. I really want to figure out how (in terms of what data actually works for me) to finetune models to align with my tools. This (along with orchestration) is my next target for research. I know distil is the go-to and works well, but i want to see if people have tried doing tool-specific finetuning (composer 2.0?) and what their takeaways are, and if this pushesh small models enough to make them *actually* useable, even if needing a specific finetune for your specific harness.
+
 Get a good experience finally locally on a normal laptop. That is my main drive currently, I really want to have a useful assistant on my 24gb macbook that doesn't hallucinate code and doesn't get its context filled after reading one file. Turboquant seems to want to help me, and Gemma 4 26B as well as Qwen3.5 35B *almost* fit. But i need a harness/toolset that is optimized for those contrains (like little_helper). Its just a little too simple still, but Gemma 4 E4B is almost useable for this, its small, fast, good at tools. It does need a little more time in the oven though.
 
 

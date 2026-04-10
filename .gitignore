@@ -1,7 +1,20 @@
+# Build
 bin/
 obj/
 publish/
+
+# IDE
 *.user
 *.suo
 .vs/
 .idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config with potential secrets
+*.secret.json
