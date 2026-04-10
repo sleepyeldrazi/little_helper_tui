@@ -1,4 +1,4 @@
-# Probably the only non-LLM generated file in this repo
+# The only non-LLM generated file in this repo
 
 Hi. This little project is the culmination of the last month or so of gathering research, prototyping, and testing every strategy I can find or think of regarding extracting value out of LLMs and specifically small/local ones. It is a harness that shares a lot of one of my favourite harness's core ideas, [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent), while trying to make it more *specialized* towards working well with small / local models, and in a codebase tailored to being maintained by agents.
 
@@ -6,6 +6,7 @@ Hi. This little project is the culmination of the last month or so of gathering 
 
 ## How this started
 A little over a month ago a friend asked me to "help him out with his vibe-coded project". As a "write all the code yourself" type at that point I mostly dismissed it, in part due to me not yet having jumped in the agentic coding sphere and not knowing where to even begin with. After deciding (against my better judgement if sleep is considered) to try Claude Code and Codex, and getting blow away by their one-shot capabilities, I became (skeptically) very excited. And burned my rate limits very quickly. This immediately pushed me toward "how can I optimize this, make it not finish in 10 seconds <insert joke here> and ideally not having to rely on internet for it?". 
+
 
 ## My Research and take on the current landscape
 This project's focus is a harness that, according to my research, prototypes and testing, *should* work well with smaller/local models.
@@ -26,7 +27,7 @@ It is build by (the not-so small) model GLM-5.1 by Z.AI. I have my notes, but a 
 
 You might notice its written in C# and not the usual typescript/python/rust trifecta that seems to have taken hold of all those tools. There is a cool benchmark, namely [AutoCodeBenchmark](https://github.com/Tencent-Hunyuan/AutoCodeBenchmark) that pinned a bunch of models against eachoter on ~200 similar tasks in a bunch of languages, and C#, somewhat surprisingly for me, was one of the best "LLM writes this correctly" languages. I decided to use that info for a project I don't plan on touching the code for too much.
 
-For the harness,Iused hermes for this particual project, like it so far, have my notes on it which I will mention in the other section.
+For the harness,I used hermes in this particual project. I like it so far. The main issue i have with it is that it has a lot of bloat for my usual needs. 
 
 
 ## Personal workflow with LLMs
