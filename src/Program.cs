@@ -27,6 +27,12 @@ class Program
 
         var workingDir = Directory.GetCurrentDirectory();
         var modelId = resolved.ModelId;
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            console.MarkupLine("[yellow]Use :quit to exit.[/]");
+        };
+
         var observer = new TuiObserver();
         Agent? lastAgent = null;
 

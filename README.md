@@ -179,7 +179,20 @@ dotnet build
 
 ## Status
 
-Pre-alpha. Core engine is complete (62 tests passing). TUI not yet implemented.
+Alpha. All phases implemented (0-8). Core engine complete (62 tests passing).
+TUI: 1,371 LOC across 12 source files. Build: 0 warnings, 0 errors.
+
+**Implemented:**
+- Model selection from `~/.little_helper/models.json`
+- REPL loop with Spectre.Console rendering
+- Live agent progress (streaming, thinking, tool calls)
+- Token budget visualization (`:tokens`)
+- Session history browser (`:sessions`)
+- Skill browser with inject (`:skills`)
+- Diff viewer for file writes (`:diff`)
+- Intervention: Space=pause/resume, Ctrl+C=cancel
+- Model arena: A/B test two models (`:arena`)
+- Command system: `:model`, `:history`, `:reset`, `:help`, `:quit`
 
 ---
 
