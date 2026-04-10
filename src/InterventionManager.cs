@@ -18,7 +18,7 @@ public class InterventionManager
     private ToolCall? _toolCallOverride;
     private bool _skipCurrentTool;
 
-    public bool IsPaused => _agent.IsPaused;
+    public bool IsPaused => _agent.Control.IsPaused;
 
     public InterventionManager(Agent agent, IAnsiConsole console, CancellationTokenSource cts)
     {
@@ -36,7 +36,7 @@ public class InterventionManager
     /// </summary>
     public void InstallToolInterceptor()
     {
-        _agent.ToolInterceptor = call =>
+        _agent.Control.ToolInterceptor = call =>
         {
             // Snapshot files before writes (for diff)
             if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
@@ -79,14 +79,14 @@ public class InterventionManager
     /// <summary>Pause the agent.</summary>
     public void Pause()
     {
-        _agent.Pause();
-        _console.MarkupLine("[yellow]Paused. Use :resume to continue, :skip to skip next tool, :inject &lt;msg&gt; to redirect.[/]");
+        _agent.Control.Pause();
+        _console.MarkupLine("[yellow]Paused. Use :resume to continue, :skip to skip next tool, :inject <msg> to redirect.[/]");
     }
 
     /// <summary>Resume the agent.</summary>
     public void Resume()
     {
-        _agent.Resume();
+        _agent.Control.Resume();
         _console.MarkupLine("[green]Resumed.[/]");
     }
 
@@ -100,7 +100,7 @@ public class InterventionManager
     /// <summary>Inject a redirect message.</summary>
     public void InjectMessage(string message)
     {
-        _agent.InjectMessage(message);
+        _agent.Control.InjectMessage(message);
         _console.MarkupLine($"[green]Injected: {Markup.Escape(message[..Math.Min(80, message.Length)])}[/]");
     }
 }

@@ -80,7 +80,7 @@ class Program
             console.WriteLine();
 
             // Set up tool interceptor for diff snapshots
-            lastAgent.ToolInterceptor = call =>
+            lastAgent.Control.ToolInterceptor = call =>
             {
                 if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
                 {

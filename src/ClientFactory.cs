@@ -11,22 +11,17 @@ public static class ClientFactory
 {
     /// <summary>
     /// Create a fully wired (ModelClient, ToolExecutor) pair ready for agent use.
-    /// Registers all 5 standard tool schemas.
-    /// Looks up provider headers from the model config if not supplied.
+    /// Registers all 5 standard tool schemas. Passes provider headers to ModelClient.
     /// </summary>
     public static (ModelClient client, ToolExecutor tools) Create(
-        ResolvedModel resolved, string workingDir,
-        Dictionary<string, string>? extraHeaders = null)
+        ResolvedModel resolved, string workingDir)
     {
-        // Look up provider headers from config if not passed explicitly
-        var headers = extraHeaders ?? LookupProviderHeaders(resolved);
-
         var client = new ModelClient(
             resolved.BaseUrl,
             resolved.ModelId,
             resolved.Temperature,
             string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
-            headers);
+            resolved.Headers);
 
         ToolSchemas.RegisterAll(client);
 
@@ -58,28 +53,5 @@ public static class ClientFactory
             ApiKey: string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey);
 
         return new Agent(config, client, tools, skills, logger, observer);
-    }
-
-    /// <summary>
-    /// Look up provider headers from ~/.little_helper/models.json by matching the base URL.
-    /// This is needed because ResolvedModel doesn't carry headers.
-    /// </summary>
-    private static Dictionary<string, string>? LookupProviderHeaders(ResolvedModel resolved)
-    {
-        try
-        {
-            var config = ModelConfig.Load();
-            foreach (var (_, provider) in config.Providers)
-            {
-                if (provider.BaseUrl.TrimEnd('/') == resolved.BaseUrl.TrimEnd('/')
-                    && provider.Headers != null && provider.Headers.Count > 0)
-                {
-                    return provider.Headers;
-                }
-            }
-        }
-        catch { /* best effort */ }
-
-        return null;
     }
 }
