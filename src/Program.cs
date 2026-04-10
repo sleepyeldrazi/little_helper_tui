@@ -370,10 +370,10 @@ class Program
 
             case ":help":
                 console.MarkupLine("[bold]Commands:[/]");
-                console.MarkupLine("  [blue]:model[/] [name]   Switch model");
+                console.MarkupLine($"  [blue]:model[/] {Markup.Escape("[name]")}   Switch model");
                 console.MarkupLine("  [blue]:tokens[/]         Show token budget");
                 console.MarkupLine("  [blue]:history[/]        Show conversation history");
-                console.MarkupLine("  [blue]:sessions[/] [N]   Browse sessions / show session #N");
+                console.MarkupLine($"  [blue]:sessions[/] {Markup.Escape("[N]")}   Browse sessions / show session #N");
                 console.MarkupLine("  [blue]:skills[/]         Browse and inject skills");
                 console.MarkupLine("  [blue]:diff[/]           Show diff for last file write");
                 console.MarkupLine("  [blue]:files[/]          List files changed this session");
