@@ -29,6 +29,10 @@ The harnesses I've used the most are opencode, pi, forgecode and now hermes. Pi 
 
 
 ## My Hot takes and ramblings
+LLMs are stupid. Like, really stupid. And I'm not saying that just because I use small models. I've used Codex 5.3, GPT-5.4, Sonnet 4.6, Opus 4.6, Kimi K2.5, GLM-5, GLM-5.1, Minimax M2.7 among many small local ones. They all can't code to save their life. At the same time, I am more than convinced that manual code writing is essentially dead.
+
+When you treat an LLM like an intern that has all the knowledge they could possibly need to write perfect code, but none of the wisdom to make good decisions about what, where and how to actually use and implement, those things *shine*. But you need to remember that they are just an auto-complete on steroids, they get really heavily steered from context, sys prompts and user prompts, they should only be told specifically what, where and how in this instance. You need to know that.
+
 I think modern models are more than capable enough. Period. We really need to focus on making them efficient, locally runnable and provide them with frameworks and tools better suited for them.
 
 An example of why I think modern models are capable enough is something from this post https://sockpuppet.org/blog/2026/03/30/vulnerability-research-is-cooked/, specifically when they mention "Is the Linux KVM hypervisor connected to the hrtimer subsystem, workqueue, or perf_event? The model knows.". I asked this qwen3.5 35B. It knew. I also asked Gemma 4 E2B and it didn't so at least I am still smarter than a 2B model.
