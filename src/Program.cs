@@ -56,7 +56,10 @@ class Program
         };
 
         var observer = new TuiObserver();
-        Agent? lastAgent = null;
+        Agent? agent = null;
+
+        // Helper to create/recreate the agent when model changes or on reset
+        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer);
 
         while (true)
         {
@@ -72,12 +75,15 @@ class Program
             // Commands
             if (input.StartsWith(':'))
             {
-                var (result, newModel) = await HandleCommand(input, console, resolved, observer, lastAgent, workingDir);
+                var (result, newModel) = await HandleCommand(input, console, resolved, observer, agent, workingDir);
                 if (result == CmdResult.Quit) break;
-                if (result == CmdResult.Reset) { observer = new TuiObserver(); lastAgent = null; }
-                if (newModel != null) resolved = newModel;
+                if (result == CmdResult.Reset) { observer = new TuiObserver(); agent = null; }
+                if (newModel != null) { resolved = newModel; agent = null; } // new model = new agent
                 continue;
             }
+
+            // Create agent on first prompt or after reset/model switch
+            agent ??= CreateAgent();
 
             // Run agent
             console.WriteLine();
@@ -91,7 +97,6 @@ class Program
 
             var logger = new SessionLogger(modelId, workingDir);
             using var cts = new CancellationTokenSource();
-            lastAgent = ClientFactory.CreateAgent(resolved!, workingDir, observer, logger);
 
             // Clear the raw input lines that InputHandler echoed during typing
             // so only the formatted panel remains. +1 for the ── separator line.
@@ -109,7 +114,7 @@ class Program
             console.WriteLine();
 
             // Set up tool interceptor for git checkpoints + diff snapshots
-            lastAgent.Control.ToolInterceptor = call =>
+            agent.Control.ToolInterceptor = call =>
             {
                 if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase))
                 {
@@ -135,7 +140,7 @@ class Program
 
             var sw = Stopwatch.StartNew();
             AgentResult? result2 = null;
-            var agentRef = lastAgent;
+            var agentRef = agent;
 
             // Redirect stderr so core's Console.Error.WriteLine doesn't
             // corrupt the Spectre spinner display
@@ -195,7 +200,8 @@ class Program
             if (result2 != null)
             {
                 StatusBar.RenderDone(console, modelId, result2, observer.CurrentStep, sw.ElapsedMilliseconds, observer);
-                observer = new TuiObserver();
+                // Don't reset observer -- keep conversation history for next turn
+                // Observer will be reset on :reset or :model switch
             }
         }
 
@@ -206,7 +212,7 @@ class Program
 
     private static async Task<(CmdResult Result, ResolvedModel? NewModel)> HandleCommand(
         string input, IAnsiConsole console, ResolvedModel? resolved,
-        TuiObserver observer, Agent? lastAgent, string workingDir)
+        TuiObserver observer, Agent? agent, string workingDir)
     {
         var parts = input.Split(' ', 2);
         var cmd = parts[0].ToLowerInvariant();
@@ -235,14 +241,14 @@ class Program
                 return (CmdResult.Continue, newResolved);
 
             case ":tokens":
-                if (lastAgent != null && resolved != null)
-                    TokenBudget.Render(console, lastAgent.History, resolved.ContextWindow, observer.TotalTokens, observer.TotalThinkingTokens);
+                if (agent != null && resolved != null)
+                    TokenBudget.Render(console, agent.History, resolved.ContextWindow, observer.TotalTokens, observer.TotalThinkingTokens);
                 else
                     console.MarkupLine("[dim]No conversation yet.[/]");
                 return (CmdResult.Continue, null);
 
             case ":history":
-                if (lastAgent?.History.Count > 0) RenderHistory(console, lastAgent.History);
+                if (agent?.History.Count > 0) RenderHistory(console, agent.History);
                 else console.MarkupLine("[dim]No conversation history yet.[/]");
                 return (CmdResult.Continue, null);
 
@@ -263,9 +269,9 @@ class Program
                 return (CmdResult.Continue, null);
 
             case ":diff":
-                if (lastAgent != null)
+                if (agent != null)
                 {
-                    var lastFile = lastAgent.History
+                    var lastFile = agent.History
                         .Where(m => m.Role == "tool" && m.ToolResult?.FilePath != null && !m.ToolResult.IsError)
                         .Select(m => m.ToolResult!.FilePath!)
                         .LastOrDefault();
