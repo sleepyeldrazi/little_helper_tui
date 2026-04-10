@@ -28,6 +28,15 @@ I kind of bin current research into two buckets, the "We need to give as much to
 The harnesses I've used the most are opencode, pi, forgecode and now hermes. Pi is very heavily in the "just give it bash" camp, the other three lean toward the "have a tool/skill for every occasion". From what I gathered, which i kind of expected, smaller models (14B-35B) tend to be more coherent in pi, specially when locally hosted and you can't afford 12k of just sys prompt + tools/skills. By comparison pi is around 2k. Little helper is around 1k but by the time you are reading this, its probably bigger. What I also noticed is that all 4 have tool-calling problems according to the feedback, and not only on the smaller models.
 
 
+## Personal workflow with LLMs
+Couple of things that I have found tend to work well:
+- Spend a bunch of time back and forth with the model just writing out docs and specs. Then make them as consise as reasonable, and read through them again. You will need to restart the session. You need a short concise and exhaustive way to onboard new sessions/models. Many of us have had the experience of having to on-board ourselves in documentation-less codebases. We now have access to world-class documentation writers. No more excuses
+- Just start a new session at ~100k. It's not worth it beyond that, regarding the model. Compaction isn't perfect and with a good enough onboarding doc, you dont need it.
+- Try to keep one session to one task (and fixing its errors). See above as to why. Essentially the implement -> verify -> repair loop on a per-task basis.
+- Always tell models "ask me questions if something is unclear, don't assume". Closest to a silver bullet I've seen so far
+- Models usually remember this, but ask for unit tests. Also after each phase make them audit and fix issues. Then start a new session and audit again.
+
+
 ## My Hot takes and ramblings
 LLMs are stupid. Like, really stupid. And I'm not saying that just because I use small models. I've used Codex 5.3, GPT-5.4, Sonnet 4.6, Opus 4.6, Kimi K2.5, GLM-5, GLM-5.1, Minimax M2.7 among many small local ones. They all can't code to save their life. At the same time, I am more than convinced that manual code writing is essentially dead.
 
