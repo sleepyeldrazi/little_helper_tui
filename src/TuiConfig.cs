@@ -34,7 +34,7 @@ public class TuiConfig
 
     // Streaming
     [JsonPropertyName("streaming")]
-    public bool Streaming { get; set; } = true;
+    public bool Streaming { get; set; } = false;
 
     // Git checkpoints before write operations
     // "auto" = checkpoint if git is already initialized, skip otherwise
