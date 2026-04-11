@@ -166,8 +166,91 @@ case ":${PATH}:" in
     *) add_to_profile 'export PATH="$HOME/.local/bin:$PATH"' ;;
 esac
 
-# 5. Default config
+# 5. Default config and skills
 mkdir -p "$CONFIG_DIR"
+
+# Create skills directory with tool-examples skill for small models
+SKILLS_DIR="${CONFIG_DIR}/skills"
+mkdir -p "${SKILLS_DIR}/tool-examples"
+
+if [ ! -f "${SKILLS_DIR}/tool-examples/SKILL.md" ]; then
+    cat > "${SKILLS_DIR}/tool-examples/SKILL.md" << 'EOF'
+---
+name: tool-examples
+description: Reference tool call examples for models struggling with tool syntax. Capable models do NOT need this.
+---
+
+# Tool Call Examples
+
+Use this skill ONLY if you are failing to generate correct tool call format.
+Well-trained models (Qwen3.5, Gemma 4, GPT-4 class) do NOT need these examples.
+
+## read
+Read a file's contents.
+
+<tool>read</tool>
+<args>{"path": "src/Program.cs"}</args>
+
+With offset/limit for large files:
+<tool>read</tool>
+<args>{"path": "src/Program.cs", "offset": 1, "limit": 50}</args>
+
+## run
+Execute a shell command.
+
+<tool>run</tool>
+<args>{"command": "ls -la", "workdir": "/home/user/project"}</args>
+
+Background process with timeout:
+<tool>run</tool>
+<args>{"command": "dotnet build", "timeout": 120}</args>
+
+## write
+Write content to a file.
+
+<tool>write</tool>
+<args>{"path": "config.json", "content": "{\n  \"key\": \"value\"\n}"}</args>
+
+## edit
+Edit a file by replacing text.
+
+<tool>edit</tool>
+<args>{"path": "src/Program.cs", "old_string": "Console.WriteLine(\"Hello\");", "new_string": "Console.WriteLine(\"World\");"}</args>
+
+Use replace_all for non-unique matches:
+<tool>edit</tool>
+<args>{"path": "config.txt", "old_string": "DEBUG", "new_string": "INFO", "replace_all": true}</args>
+
+## search
+Search file contents with grep.
+
+<tool>search</tool>
+<args>{"pattern": "class Program", "path": "src", "output_mode": "content"}</args>
+
+File name search:
+<tool>search</tool>
+<args>{"pattern": "*.csproj", "path": ".", "target": "files"}</args>
+
+## bash
+Alias for run. Same syntax.
+
+<tool>bash</tool>
+<args>{"command": "git status"}</args>
+
+## skill_view
+Read a skill's content.
+
+<tool>skill_view</tool>
+<args>{"name": "tool-examples"}</args>
+
+## verify
+Run verification commands (build, test, lint).
+
+<tool>verify</tool>
+<args>{"type": "build"}</args>
+EOF
+    info "Created tool-examples skill"
+fi
 
 if [ ! -f "${CONFIG_DIR}/models.json" ]; then
     cat > "${CONFIG_DIR}/models.json" << 'EOF'
