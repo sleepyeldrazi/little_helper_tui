@@ -55,16 +55,15 @@ class Program
         // Use default model from config if set, otherwise prompt
         ResolvedModel? resolved;
         var modelConfig = ModelConfig.Load();
-        var hasConfiguredProviders = modelConfig.Providers.Any(p =>
-            !string.IsNullOrEmpty(p.Value.ApiKey) ||
-            p.Value.BaseUrl.Contains("localhost") ||
-            p.Value.BaseUrl.Contains("127.0.0.1"));
+        var hasConfiguredProviders = modelConfig.Providers.Count > 0;
 
-        if (!string.IsNullOrEmpty(_tuiConfig.DefaultModel))
+        // Check tui.json default_model first, then models.json default_model
+        var defaultModel = _tuiConfig.DefaultModel ?? modelConfig.DefaultModel;
+        if (!string.IsNullOrEmpty(defaultModel))
         {
-            resolved = modelConfig.Resolve(_tuiConfig.DefaultModel);
+            resolved = modelConfig.Resolve(defaultModel);
             if (resolved != null)
-                console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim](from tui.json)[/]");
+                console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim]({resolved.BaseUrl})[/]");
             else if (!hasConfiguredProviders)
                 resolved = EndpointSetup.Run(console);
             else
