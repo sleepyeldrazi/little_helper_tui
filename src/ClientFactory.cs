@@ -1,5 +1,5 @@
-using Spectre.Console;
 using LittleHelper;
+using LittleHelperTui.Observers;
 
 namespace LittleHelperTui;
 
@@ -55,7 +55,7 @@ public static class ClientFactory
     /// Config values (MaxSteps, EnableStreaming) come from TuiConfig.
     /// </summary>
     public static Agent CreateAgent(ResolvedModel resolved, string workingDir,
-        TuiObserver observer, TuiConfig config, SessionLogger? logger = null, bool allowEscape = false)
+        TerminalGuiObserver observer, TuiConfig config, SessionLogger? logger = null, bool allowEscape = false)
     {
         var (client, tools) = Create(resolved, workingDir, allowEscape);
 
