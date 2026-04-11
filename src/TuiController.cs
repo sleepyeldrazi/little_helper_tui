@@ -58,9 +58,6 @@ public class TuiController
         // Render user message panel
         _observer.AddUserMessage(text);
 
-        // Yield to let the main loop process the queued UI updates
-        await Task.Delay(10);
-
         // Create session logger if needed
         _logger ??= new SessionLogger(_model.ModelId, _workingDir);
 
@@ -79,7 +76,7 @@ public class TuiController
         var cts = _currentCts;
         var sw = Stopwatch.StartNew();
 
-        _mainWindow.InputField.Enabled = false;
+        Application.Invoke(() => _mainWindow.InputField.Enabled = false);
 
         try
         {
@@ -142,8 +139,11 @@ public class TuiController
         }
         finally
         {
-            _mainWindow.InputField.Enabled = true;
-            _mainWindow.InputField.SetFocus();
+            Application.Invoke(() =>
+            {
+                _mainWindow.InputField.Enabled = true;
+                _mainWindow.InputField.SetFocus();
+            });
             _currentCts = null;
         }
     }

@@ -66,10 +66,12 @@ public class ColoredLine : View
             Driver.SetAttribute(seg.Scheme.Normal);
             foreach (var rune in seg.Text.EnumerateRunes())
             {
-                if (x >= bounds.Width) break;
+                var cols = rune.GetColumns();
+                if (cols < 1) cols = 1;
+                if (x + cols > bounds.Width) break;
                 Move(x, 0);
                 Driver.AddRune(rune);
-                x++;
+                x += cols;
             }
         }
         var spaceRune = new Rune(' ');
