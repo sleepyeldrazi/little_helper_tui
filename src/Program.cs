@@ -17,11 +17,24 @@ class Program
         var term = Environment.GetEnvironmentVariable("TERM") ?? "";
         if (term is "xterm-ghostty" or "wezterm" || term.EndsWith("-direct"))
             Environment.SetEnvironmentVariable("TERM", "xterm-256color");
-        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COLORTERM")))
-            Environment.SetEnvironmentVariable("COLORTERM", "truecolor");
+        // Always set COLORTERM=truecolor (not just if unset) to force truecolor mode
+        Environment.SetEnvironmentVariable("COLORTERM", "truecolor");
 
-        Application.Init();
+        // Force NetDriver on macOS/Linux for truecolor support (CursesDriver doesn't support it)
+        Application.ForceDriver = "NetDriver";
+
+        // MUST set Force16Colors BEFORE Init() for truecolor detection to work
         Application.Force16Colors = false;
+        Application.Init();
+
+        // DEBUG: Log driver and color info
+        Console.WriteLine($"[DEBUG] Driver: {Application.Driver?.GetType().Name}");
+        Console.WriteLine($"[DEBUG] SupportsTrueColor: {Application.Driver?.SupportsTrueColor}");
+        Console.WriteLine($"[DEBUG] Force16Colors: {Application.Force16Colors}");
+        Console.WriteLine($"[DEBUG] COLORTERM: {Environment.GetEnvironmentVariable("COLORTERM")}");
+        Console.WriteLine($"[DEBUG] TERM: {Environment.GetEnvironmentVariable("TERM")}");
+        Console.WriteLine("Press any key to continue...");
+        Console.ReadKey(true);
 
         // Set dark color scheme globally for all built-in widget types
         var dark = DarkColors.Base;
