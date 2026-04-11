@@ -6,9 +6,9 @@
 # What it does:
 #   1. Detects OS (Linux/macOS) and arch
 #   2. Installs .NET 10 SDK if missing
-#   3. Clones little_helper_tui (with core submodule) to ~/.little_helper/src
+#   3. Clones little_helper_tui (with core submodule) to ~/.little_helper/repo
 #   4. Builds Release binary
-#   5. Symlinks ~/.local/bin/little -> binary
+#   5. Installs wrapper script to ~/.local/bin/little
 #   6. Creates default config dirs and files
 #
 set -euo pipefail
@@ -24,21 +24,19 @@ warn()  { printf "${YELLOW}  !${RESET} %s\n" "$*"; }
 die()   { printf "${RED}  X${RESET} %s\n" "$*"; exit 1; }
 
 INSTALL_DIR="${HOME}/.little_helper"
-SRC_DIR="${INSTALL_DIR}/src"
+REPO_DIR="${INSTALL_DIR}/repo"
 BIN_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${INSTALL_DIR}"
-DOTNET_INSTALL="${HOME}/.dotnet"
+DOTNET_DIR="${HOME}/.dotnet"
 
 # --- Helpers ---
 
 add_to_profile() {
     local line="$1"
-    # Check if already in any profile file
     for rc in "${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile"; do
         [ -f "$rc" ] || continue
         grep -qF "$line" "$rc" 2>/dev/null && return
     done
-    # Not found — add to the first one that exists
     for rc in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.profile"; do
         [ -f "$rc" ] || continue
         echo "" >> "$rc"
@@ -59,87 +57,93 @@ install_dotnet() {
         die "Need curl or wget to download .NET installer"
     fi
     chmod +x /tmp/dotnet-install.sh
-    /tmp/dotnet-install.sh --channel 10.0 --install-dir "$DOTNET_INSTALL" 2>&1 || {
+    /tmp/dotnet-install.sh --channel 10.0 --install-dir "$DOTNET_DIR" 2>&1 || {
         rm -f /tmp/dotnet-install.sh
         die ".NET install failed. Install manually: https://dotnet.microsoft.com/download"
     }
     rm -f /tmp/dotnet-install.sh
     add_to_profile 'export PATH="$HOME/.dotnet:$PATH"'
-    info ".NET 10 installed to ${DOTNET_INSTALL}"
+    info ".NET 10 installed to ${DOTNET_DIR}"
 }
 
 ensure_dotnet() {
-    # Already on PATH and version >= 10?
+    # Check system-wide first
     if command -v dotnet &>/dev/null; then
         local ver
         ver="$(dotnet --version 2>/dev/null | head -1)"
         local major="${ver%%.*}"
         if [ "$major" -ge 10 ] 2>/dev/null; then
-            info ".NET ${ver} already installed"
+            info ".NET ${ver} found"
+            DOTNET_BIN="$(command -v dotnet)"
             return
         fi
-        warn ".NET ${ver} found, need 10+"
     fi
 
-    # Check install dir
-    if [ -x "${DOTNET_INSTALL}/dotnet" ]; then
-        export PATH="${DOTNET_INSTALL}:${PATH}"
+    # Check user install
+    if [ -x "${DOTNET_DIR}/dotnet" ]; then
         local ver
-        ver="$(dotnet --version 2>/dev/null | head -1)"
+        ver="$("${DOTNET_DIR}/dotnet" --version 2>/dev/null | head -1)"
         local major="${ver%%.*}"
         if [ "$major" -ge 10 ] 2>/dev/null; then
-            info ".NET ${ver} found at ${DOTNET_INSTALL}"
+            info ".NET ${ver} found at ${DOTNET_DIR}"
+            DOTNET_BIN="${DOTNET_DIR}/dotnet"
+            add_to_profile 'export PATH="$HOME/.dotnet:$PATH"'
             return
         fi
     fi
 
-    # Need to install
     install_dotnet
-    export PATH="${DOTNET_INSTALL}:${PATH}"
+    DOTNET_BIN="${DOTNET_DIR}/dotnet"
 }
 
 # --- Main ---
 
-# Detect OS
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$OS" in
     linux|darwin) ;;
     *) die "Unsupported OS: $OS (Linux and macOS only)" ;;
 esac
 
+DOTNET_BIN=""  # will be set by ensure_dotnet
+
 printf "\n${DIM}little helper — install${RESET}\n\n"
 
 # 1. .NET
 ensure_dotnet
-command -v dotnet &>/dev/null || die "dotnet not found"
 
 # 2. Clone
-if [ -d "$SRC_DIR/.git" ]; then
-    info "Updating ${SRC_DIR}"
-    cd "$SRC_DIR"
+if [ -d "$REPO_DIR/.git" ]; then
+    info "Updating ${REPO_DIR}"
+    cd "$REPO_DIR"
     git pull --ff-only 2>/dev/null || warn "git pull failed — local changes? Continuing."
     git submodule update --init --recursive 2>/dev/null || true
 else
-    info "Cloning little_helper_tui -> ${SRC_DIR}"
+    info "Cloning little_helper_tui -> ${REPO_DIR}"
     mkdir -p "$INSTALL_DIR"
     git clone --recurse-submodules \
         https://github.com/sleepyeldrazi/little_helper_tui.git \
-        "$SRC_DIR" 2>&1 || die "git clone failed"
-    cd "$SRC_DIR"
+        "$REPO_DIR" 2>&1 || die "git clone failed"
+    cd "$REPO_DIR"
 fi
 
-# 3. Build
+# 3. Build (using resolved dotnet path)
 info "Building Release binary..."
-dotnet build -c Release -v quiet 2>&1 || die "Build failed"
+"$DOTNET_BIN" build -c Release -v quiet 2>&1 || die "Build failed"
 
-BINARY="${SRC_DIR}/src/bin/Release/net10.0/little_helper_tui"
+BINARY="${REPO_DIR}/src/bin/Release/net10.0/little_helper_tui"
 [ -x "$BINARY" ] || die "Binary not found at ${BINARY}"
 info "Built: ${BINARY}"
 
-# 4. Symlink
+# 4. Install wrapper script (not a raw symlink — ensures dotnet runtime is found)
 mkdir -p "$BIN_DIR"
-ln -sf "$BINARY" "${BIN_DIR}/little"
-info "Symlinked ${BIN_DIR}/little"
+cat > "${BIN_DIR}/little" << WRAPPER
+#!/usr/bin/env bash
+# little helper launcher — installed by install.sh
+export PATH="${DOTNET_DIR}:\${PATH}"
+exec "${BINARY}" "\$@"
+WRAPPER
+chmod +x "${BIN_DIR}/little"
+info "Installed ${BIN_DIR}/little"
 
 case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
@@ -189,6 +193,6 @@ printf "\n${GREEN}  Done!${RESET}\n\n"
 printf "  Start:       ${GREEN}little${RESET}\n"
 printf "  Config:      ${DIM}${CONFIG_DIR}${RESET}\n"
 printf "  Models:      ${DIM}${CONFIG_DIR}/models.json${RESET}\n"
-printf "  Source:      ${DIM}${SRC_DIR}${RESET}\n"
-printf "  Update:      ${DIM}cd %s && git pull && dotnet build -c Release${RESET}\n" "$SRC_DIR"
+printf "  Source:      ${DIM}${REPO_DIR}${RESET}\n"
+printf "  Update:      ${DIM}cd %s && git pull && dotnet build -c Release${RESET}\n" "$REPO_DIR"
 printf "\n"
