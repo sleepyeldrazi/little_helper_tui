@@ -380,18 +380,34 @@ public class TuiController
 
     private void ShowConfig()
     {
-        _mainWindow?.AddColoredBlock("TUI Config (~/.little_helper/tui.json):");
-        _mainWindow?.AddColoredBlock($"  thinking_mode:        {_config.ThinkingMode}");
-        _mainWindow?.AddColoredBlock($"  show_token_budget:    {_config.ShowTokenBudget}");
-        _mainWindow?.AddColoredBlock($"  auto_show_diffs:      {_config.AutoShowDiffs}");
-        _mainWindow?.AddColoredBlock($"  max_tool_output_lines: {_config.MaxToolOutputLines}");
-        _mainWindow?.AddColoredBlock($"  max_steps:            {_config.MaxSteps}");
-        _mainWindow?.AddColoredBlock($"  default_model:        {_config.DefaultModel ?? "(none)"}");
-        _mainWindow?.AddColoredBlock($"  streaming:            {_config.Streaming}");
-        _mainWindow?.AddColoredBlock($"  git_checkpoint:       {_config.GitCheckpoint}");
-        _mainWindow?.AddColoredBlock($"  theme:                {_config.Theme}");
-        _mainWindow?.AddColoredBlock($"  verbose:              {_config.Verbose}");
-        _mainWindow?.AddColoredBlock("");
+        if (_mainWindow == null) return;
+        _mainWindow.AddColoredSegments(new List<TextSegment>
+        {
+            new("TUI Config", DarkColors.Bold),
+            new(" (~/.little_helper/tui.json)", DarkColors.Dim)
+        });
+        ConfigLine("thinking_mode", _config.ThinkingMode);
+        ConfigLine("show_token_budget", _config.ShowTokenBudget.ToString());
+        ConfigLine("auto_show_diffs", _config.AutoShowDiffs.ToString());
+        ConfigLine("max_tool_output_lines", _config.MaxToolOutputLines.ToString());
+        ConfigLine("max_steps", _config.MaxSteps.ToString());
+        ConfigLine("default_model", _config.DefaultModel ?? "(none)");
+        ConfigLine("streaming", _config.Streaming.ToString());
+        ConfigLine("git_checkpoint", _config.GitCheckpoint.ToString());
+        ConfigLine("theme", _config.Theme);
+        ConfigLine("verbose", _config.Verbose.ToString());
+        _mainWindow.AddColoredBlock("");
+        _mainWindow.AddColoredBlock("Edit ~/.little_helper/tui.json to change settings.", DarkColors.Dim);
+    }
+
+    private void ConfigLine(string key, string value)
+    {
+        var padded = key.PadRight(22);
+        _mainWindow?.AddColoredSegments(new List<TextSegment>
+        {
+            new($"  {padded}", DarkColors.AssistantBorder),
+            new(value, DarkColors.Base)
+        });
     }
 
     private void Reset()
@@ -414,21 +430,32 @@ public class TuiController
 
     private void ShowHelp()
     {
-        _mainWindow?.AddColoredBlock("Commands:");
-        _mainWindow?.AddColoredBlock("  :model [name]   Switch model");
-        _mainWindow?.AddColoredBlock("  :tokens         Show token budget");
-        _mainWindow?.AddColoredBlock("  :history        Show conversation history");
-        _mainWindow?.AddColoredBlock("  :sessions [N]   Browse sessions / show session #N");
-        _mainWindow?.AddColoredBlock("  :skills         Browse and inject skills");
-        _mainWindow?.AddColoredBlock("  :diff           Show diff for last file write");
-        _mainWindow?.AddColoredBlock("  :files          List files changed this session");
-        _mainWindow?.AddColoredBlock("  :config         Show TUI config");
-        _mainWindow?.AddColoredBlock("  :reset          Reset conversation");
-        _mainWindow?.AddColoredBlock("  :cancel         Cancel current agent run");
-        _mainWindow?.AddColoredBlock("  :hide           Drop to shell, return with 'exit'");
-        _mainWindow?.AddColoredBlock("  :quit           Exit");
-        _mainWindow?.AddColoredBlock("");
-        _mainWindow?.AddColoredBlock("During agent run: Ctrl+C = cancel");
+        if (_mainWindow == null) return;
+        _mainWindow.AddColoredBlock("Commands:", DarkColors.Bold);
+        HelpLine(":model [name]", "Switch model");
+        HelpLine(":tokens", "Show token budget");
+        HelpLine(":history", "Show conversation history");
+        HelpLine(":sessions [N]", "Browse sessions / show session #N");
+        HelpLine(":skills", "Browse and inject skills");
+        HelpLine(":diff", "Show diff for last file write");
+        HelpLine(":files", "List files changed this session");
+        HelpLine(":config", "Show TUI config");
+        HelpLine(":reset", "Reset conversation");
+        HelpLine(":cancel", "Cancel current agent run");
+        HelpLine(":hide", "Drop to shell, return with 'exit'");
+        HelpLine(":quit", "Exit");
+        _mainWindow.AddColoredBlock("");
+        _mainWindow.AddColoredBlock("During agent run: Ctrl+C = cancel", DarkColors.Dim);
+    }
+
+    private void HelpLine(string cmd, string desc)
+    {
+        var padded = cmd.PadRight(18);
+        _mainWindow?.AddColoredSegments(new List<TextSegment>
+        {
+            new($"  {padded}", DarkColors.AssistantBorder),
+            new(desc, DarkColors.Base)
+        });
     }
 
     // --- Helpers ---

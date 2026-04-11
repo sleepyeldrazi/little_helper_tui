@@ -73,7 +73,6 @@ public record TextSegment(string Text, ColorScheme Scheme);
 
 /// <summary>
 /// A view that renders multiple colored text segments on a single line.
-/// Used to display mixed-color output like "[green]✓[/] Done [dim]5 steps[/]".
 /// </summary>
 public class ColoredLine : View
 {
@@ -100,7 +99,8 @@ public class ColoredLine : View
                 if (x >= bounds.Width) break;
                 Move(x, 0);
                 Driver.AddRune(rune);
-                x += Math.Max(1, rune.Utf16SequenceLength);
+                // Box-drawing and most BMP chars are width 1
+                x++;
             }
         }
         // Fill rest with spaces
@@ -117,7 +117,8 @@ public class ColoredLine : View
 
 /// <summary>
 /// Main window: dark, borderless, full-screen.
-/// Chat area is a ScrollView of colored views. Input at bottom with "> " prompt.
+/// Chat area uses a simple View with manual Y tracking for content,
+/// wrapped in a ScrollView for scrolling. Input at bottom with "> " prompt.
 /// </summary>
 public class MainWindow : Window
 {
@@ -126,6 +127,7 @@ public class MainWindow : Window
     private readonly TextField _inputField;
     private readonly TuiController _controller;
     private bool _autoScroll = true;
+    private int _nextY;  // Track next Y position explicitly
 
     private readonly List<string> _history = new();
     private int _historyIndex = -1;
@@ -147,7 +149,7 @@ public class MainWindow : Window
         {
             X = 0, Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Auto(),
+            Height = 1, // Will be updated as content is added
             ColorScheme = DarkColors.Base
         };
 
@@ -156,16 +158,10 @@ public class MainWindow : Window
             X = 0, Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(1),
-            ColorScheme = DarkColors.Base
+            ColorScheme = DarkColors.Base,
+            ShowVerticalScrollIndicator = true
         };
         _scrollView.Add(_chatContent);
-
-        // Handle resize: re-scroll to bottom if we were auto-scrolling
-        _scrollView.LayoutComplete += (s, e) =>
-        {
-            if (_autoScroll)
-                ScrollToBottom();
-        };
 
         var promptLabel = new Label
         {
@@ -213,24 +209,22 @@ public class MainWindow : Window
     {
         Application.Invoke(() =>
         {
-            // For multi-line text, add each line as a separate label for proper layout
             var lines = text.Split('\n');
             foreach (var line in lines)
             {
                 var label = new Label
                 {
                     X = 0,
-                    Y = _chatContent.Subviews.Count > 0
-                        ? Pos.Bottom(_chatContent.Subviews[^1])
-                        : 0,
+                    Y = _nextY,
                     Width = Dim.Fill(),
                     Height = 1,
                     Text = line,
                     ColorScheme = scheme ?? DarkColors.Base
                 };
                 _chatContent.Add(label);
+                _nextY++;
             }
-            if (_autoScroll) ScrollToBottom();
+            UpdateContentSize();
         });
     }
 
@@ -242,12 +236,11 @@ public class MainWindow : Window
             var line = new ColoredLine(segments)
             {
                 X = 0,
-                Y = _chatContent.Subviews.Count > 0
-                    ? Pos.Bottom(_chatContent.Subviews[^1])
-                    : 0,
+                Y = _nextY,
             };
             _chatContent.Add(line);
-            if (_autoScroll) ScrollToBottom();
+            _nextY++;
+            UpdateContentSize();
         });
     }
 
@@ -257,30 +250,48 @@ public class MainWindow : Window
         {
             foreach (var child in _chatContent.Subviews.ToList())
                 _chatContent.Remove(child);
+            _nextY = 0;
             _autoScroll = true;
+            UpdateContentSize();
         });
+    }
+
+    private void UpdateContentSize()
+    {
+        // Set content height explicitly so ScrollView knows the extent
+        _chatContent.Height = _nextY;
+        _scrollView.SetContentSize(new System.Drawing.Size(
+            _scrollView.Frame.Width > 0 ? _scrollView.Frame.Width : 80,
+            _nextY));
+
+        if (_autoScroll)
+        {
+            // Scroll to show the last line
+            var viewportHeight = _scrollView.Frame.Height;
+            var targetOffset = Math.Max(0, _nextY - viewportHeight);
+            _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
+        }
     }
 
     public void ScrollToBottom()
     {
         Application.Invoke(() =>
         {
-            _scrollView.ScrollDown(_scrollView.GetContentSize().Height);
+            var viewportHeight = _scrollView.Frame.Height;
+            var targetOffset = Math.Max(0, _nextY - viewportHeight);
+            _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
+            _autoScroll = true;
         });
     }
 
     private void ScrollChat(int delta)
     {
-        var newOffset = _scrollView.ContentOffset with
-        {
-            Y = _scrollView.ContentOffset.Y - delta
-        };
-        _scrollView.ContentOffset = newOffset;
+        var newY = _scrollView.ContentOffset.Y - delta;
+        var maxOffset = Math.Max(0, _nextY - _scrollView.Frame.Height);
+        newY = Math.Max(-maxOffset, Math.Min(0, newY));
+        _scrollView.ContentOffset = new System.Drawing.Point(0, newY);
 
-        var contentHeight = _scrollView.GetContentSize().Height;
-        var viewportHeight = _scrollView.Frame.Height;
-        var offset = -_scrollView.ContentOffset.Y;
-        _autoScroll = offset >= contentHeight - viewportHeight - 2;
+        _autoScroll = -newY >= _nextY - _scrollView.Frame.Height - 2;
     }
 
     private void OnInputAccepting(object? sender, EventArgs e)
