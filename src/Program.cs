@@ -1,541 +1,189 @@
-using System.Diagnostics;
-using Spectre.Console;
 using LittleHelper;
+using LittleHelperTui.Dialogs;
+using LittleHelperTui.Views;
+using Terminal.Gui;
 
 namespace LittleHelperTui;
 
 class Program
 {
-    private static string? _pendingSkillContent = null;
-    private static TuiConfig _tuiConfig = new();
-    private static GitCheckpoint? _gitCheckpoint;
-    private static int _lastConsoleWidth = Console.WindowWidth;
-    private static bool _yoloMode = false;  // Allow writes outside working directory
-    private static CancellationTokenSource? _currentCts;  // For Ctrl+C cancellation during agent run
-
-    // Alternate screen buffer: preserves user's terminal history on exit
-    // ?1047h = switch to alt buffer (keeps scrollback) — works on most modern terminals
-    // ?1049h = switch + clear — needed for Terminal.app which doesn't support scrollback in alt buffer
-    // Ghostty, iTerm2, Alacritty, WezTerm all support ?1047h properly
-    private static readonly bool IsMacTerminal = Environment.GetEnvironmentVariable("TERM_PROGRAM") == "Apple_Terminal";
-
-    private static string EnterAltBuffer => IsMacTerminal
-        ? "\x1b[?1049h"  // Terminal.app: no scrollback, but consistent behavior
-        : "\x1b[?1047h\x1b[H\x1b[2J\x1b[?1000h\x1b[?1002h\x1b[?1006h";  // Modern terminals: scrollback + mouse
-
-    private static string LeaveAltBuffer => IsMacTerminal
-        ? "\x1b[?1049l"  // Terminal.app
-        : "\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?1047l";  // Modern terminals: disable mouse then exit alt buffer
-
-    private static void EnterAlternateScreen() => Console.Write(EnterAltBuffer);
-    private static void LeaveAlternateScreen() => Console.Write(LeaveAltBuffer);
-
-    /// <summary>Check if terminal width changed and redraw if so.</summary>
-    private static void CheckResize(IAnsiConsole console, TuiObserver observer)
-    {
-        try
-        {
-            var width = Console.WindowWidth;
-            if (width != _lastConsoleWidth)
-            {
-                _lastConsoleWidth = width;
-                observer.Redraw(console);
-            }
-        }
-        catch { /* Console.WindowWidth can throw when no terminal */ }
-    }
-
     static async Task<int> Main(string[] args)
     {
-        // Parse --yolo flag
-        _yoloMode = args.Contains("--yolo") || args.Contains("-y");
+        var yoloMode = args.Contains("--yolo") || args.Contains("-y");
+        var config = TuiConfig.Load();
 
-        _tuiConfig = TuiConfig.Load();
+        // Ensure truecolor works — terminals like Ghostty set TERM to values that
+        // ncurses/terminfo doesn't recognize, breaking Terminal.Gui's color detection.
+        var term = Environment.GetEnvironmentVariable("TERM") ?? "";
+        if (term is "xterm-ghostty" or "wezterm" || term.EndsWith("-direct"))
+            Environment.SetEnvironmentVariable("TERM", "xterm-256color");
+        // Always set COLORTERM=truecolor (not just if unset) to force truecolor mode
+        Environment.SetEnvironmentVariable("COLORTERM", "truecolor");
 
-        var console = AnsiConsole.Console;
+        // Select driver based on config: "net" for truecolor, "curses" for speed
+        Application.ForceDriver = config.Driver.Equals("curses", StringComparison.OrdinalIgnoreCase)
+            ? "CursesDriver"
+            : "NetDriver";
 
-        // Enter alternate screen buffer early — everything below lives in it
-        EnterAlternateScreen();
-        Console.Out.Flush();
-        _lastConsoleWidth = Console.WindowWidth;
+        // MUST set Force16Colors BEFORE Init() for truecolor detection to work
+        Application.Force16Colors = false;
+        Application.Init();
 
-        // Initialize git checkpoint service
-        _gitCheckpoint = new GitCheckpoint(
-            Directory.GetCurrentDirectory(), _tuiConfig.GitCheckpoint, console);
-        _gitCheckpoint.EnsureInitialized();
-
-        // Use default model from config if set, otherwise prompt
-        ResolvedModel? resolved;
-        var modelConfig = ModelConfig.Load();
-        var hasConfiguredProviders = modelConfig.Providers.Count > 0;
-
-        // Check tui.json default_model first, then models.json default_model
-        var defaultModel = _tuiConfig.DefaultModel ?? modelConfig.DefaultModel;
-        if (!string.IsNullOrEmpty(defaultModel))
+        // Set dark color scheme globally for all built-in widget types
+        var dark = DarkColors.Base;
+        var dialog = DarkColors.Dialog;
+        foreach (var key in Colors.ColorSchemes.Keys.ToList())
         {
-            resolved = modelConfig.Resolve(defaultModel);
-            if (resolved == null && !hasConfiguredProviders)
-                resolved = await EndpointSetup.RunAsync(console);
-            else if (resolved == null)
-                resolved = await ModelSelector.SelectAsync(console);
-        }
-        else if (!hasConfiguredProviders)
-        {
-            // First run with no providers — show setup menu
-            resolved = await EndpointSetup.RunAsync(console);
-        }
-        else
-        {
-            resolved = await ModelSelector.SelectAsync(console);
-        }
-        if (resolved == null)
-        {
-            LeaveAlternateScreen();
-            return 1;
+            Colors.ColorSchemes[key] = key == "Dialog" ? dialog : dark;
         }
 
-        // Show banner + model info (now inside alt buffer, survives)
-        console.Write(new FigletText("little helper")
-            .LeftJustified()
-            .Color(Color.Blue));
-        console.MarkupLine("[dim]Terminal UI v0.1.0[/]");
-        console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim]({resolved.BaseUrl})[/]");
-
-        // Warn Terminal.app users about scrollback limitations
-        if (IsMacTerminal)
+        try
         {
-            console.MarkupLine("[dim][yellow]Note:[/] Terminal.app has limited scrollback. Use iTerm2 or Ghostty for full scrollback.[/]");
-        }
+            // Resolve model — matches old startup flow:
+            // 1. Check tui.json default_model, then models.json default_model
+            // 2. If no providers configured → EndpointSetup (provider picker)
+            // 3. Otherwise → model selection picker
+            var modelConfig = ModelConfig.Load();
+            var hasConfiguredProviders = modelConfig.Providers.Count > 0;
+            var defaultModel = config.DefaultModel ?? modelConfig.DefaultModel;
 
-        // Hint for new users
-        console.MarkupLine("[dim]Hint: use :help for the command list[/]");
-        console.WriteLine();
+            ResolvedModel? resolved = null;
 
-        var workingDir = Directory.GetCurrentDirectory();
-        var modelId = resolved.ModelId;
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;  // Always prevent immediate exit
-
-            // If agent is running, cancel it. Otherwise remind user how to quit.
-            if (_currentCts != null && !_currentCts.IsCancellationRequested)
+            if (!string.IsNullOrEmpty(defaultModel))
             {
-                _currentCts.Cancel();
+                resolved = modelConfig.Resolve(defaultModel);
+                if (resolved == null && !hasConfiguredProviders)
+                    resolved = ShowEndpointSetup();
+                else if (resolved == null)
+                    resolved = ShowModelSelection();
+            }
+            else if (!hasConfiguredProviders)
+            {
+                // First run — show provider setup (like old EndpointSetup)
+                resolved = ShowEndpointSetup();
             }
             else
             {
-                console.MarkupLine("[yellow]Use :quit to exit.[/]");
-            }
-        };
-
-        // Ensure we leave alternate buffer on any exit path
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => LeaveAlternateScreen();
-
-        var observer = new TuiObserver(_tuiConfig);
-        Agent? agent = null;
-        SessionLogger? logger = null;
-
-        // Helper to create/recreate the agent when model changes or on reset
-        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer, _tuiConfig, logger, _yoloMode);
-
-        while (true)
-        {
-            CheckResize(console, observer);
-            observer.Drain(console);
-            observer.Record(c => c.MarkupLine("[dim]──[/]"));
-
-            var input = InputHandler.ReadLine(console);
-            if (input == null) { console.MarkupLine("[dim]Goodbye![/]"); break; }
-
-            input = input.Trim();
-            if (string.IsNullOrEmpty(input)) continue;
-
-            // Commands
-            if (input.StartsWith(':'))
-            {
-                var cmdResult = await HandleCommand(
-                    input, console, resolved, observer, agent, workingDir);
-                if (cmdResult.Result == CmdResult.Quit) break;
-                if (cmdResult.ResetAgent)
-                {
-                    observer = new TuiObserver(_tuiConfig);
-                    agent = null;
-                    if (cmdResult.DisposeLogger)
-                    {
-                        logger?.Dispose();
-                        logger = null;
-                    }
-                }
-                if (cmdResult.NewModel != null)
-                {
-                    resolved = cmdResult.NewModel;
-                    agent = null;
-                    // Reset observer on model switch -- don't carry over tokens/steps
-                    observer = new TuiObserver(_tuiConfig);
-                }
-                continue;
+                resolved = ShowModelSelection();
             }
 
-            // Create session logger BEFORE agent so it's available for logging
-            logger ??= new SessionLogger(modelId, workingDir);
-
-            // Create agent on first prompt or after reset/model switch
-            agent ??= CreateAgent();
-
-            // Run agent
-            console.WriteLine();
-
-            var effectiveInput = input;
-            if (_pendingSkillContent != null)
+            if (resolved == null)
             {
-                effectiveInput = $"{_pendingSkillContent}\n\n---\n\n{input}";
-                _pendingSkillContent = null;
+                Application.Shutdown();
+                return 1;
             }
 
-            using var cts = new CancellationTokenSource();
-            _currentCts = cts;  // Store for Ctrl+C cancellation
+            // Create controller and main window
+            var controller = new TuiController(config, yoloMode);
+            var mainWindow = new MainWindow(controller);
+            controller.SetMainWindow(mainWindow);
+            controller.SetModel(resolved);
 
-            // Clear the raw input lines that InputHandler echoed during typing
-            // so only the formatted panel remains. +1 for the ── separator line.
-            var inputLineCount = InputHandler.LastRenderedLineCount + 1;
-            for (int i = 0; i < inputLineCount; i++)
-                Console.Write("\u001b[1A\r\u001b[K");
-            Console.Write("\r\u001b[K");
+            // Show welcome banner (dim, like old Spectre)
+            mainWindow.AddColoredBlock("little helper", DarkColors.AssistantBorder);
+            mainWindow.AddColoredBlock($"Using {resolved.ModelId} ({resolved.BaseUrl})", DarkColors.Dim);
+            mainWindow.AddColoredBlock("Detecting context window...", DarkColors.Dim);
+            mainWindow.AddColoredBlock("Hint: use :help for the command list", DarkColors.Dim);
+            mainWindow.AddColoredBlock("", DarkColors.Base);
 
-            var userPanel = new Panel(Markup.Escape(input))
-                .Header("[green]You[/]")
-                .Border(BoxBorder.Rounded)
-                .BorderColor(Color.Green)
-                .Expand();
-            observer.Record(c =>
+            // Detect context window in background once event loop is running
+            var resolvedCopy = resolved;
+            mainWindow.Ready += (s, e) =>
             {
-                c.Write(userPanel);
-                c.WriteLine();
-            });
-
-            // Set up tool interceptor for git checkpoints + diff snapshots
-            agent.Control.ToolInterceptor = call =>
-            {
-                if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase) ||
-                    call.Name.Equals("edit", StringComparison.OrdinalIgnoreCase) ||
-                    call.Name.Equals("patch", StringComparison.OrdinalIgnoreCase))
+                _ = Task.Run(async () =>
                 {
                     try
                     {
-                        if (call.Arguments.TryGetProperty("path", out var pathEl))
+                        var detected = await DetectContextWindowAsync(resolvedCopy);
+                        Application.Invoke(() =>
                         {
-                            var path = pathEl.GetString();
-                            if (path != null)
-                            {
-                                var fullPath = Path.GetFullPath(Path.Combine(workingDir, path));
-                                // Git checkpoint before write
-                                _gitCheckpoint?.CheckpointBeforeWrite(fullPath);
-                                // Diff snapshot before write
-                                DiffViewer.Snapshot(fullPath);
-                            }
-                        }
+                            controller.SetModel(detected);
+                            var ctxK = detected.ContextWindow >= 1024
+                                ? $"{detected.ContextWindow / 1024}K"
+                                : $"{detected.ContextWindow}";
+                            mainWindow.AddColoredBlock($"Context window: {ctxK} tokens", DarkColors.Dim);
+                        });
                     }
                     catch { }
-                }
-                return call;
+                });
             };
 
-            var sw = Stopwatch.StartNew();
-            AgentResult? result2 = null;
-            var agentRef = agent;
+            Application.Run(mainWindow);
+            return 0;
+        }
+        finally
+        {
+            Application.Shutdown();
+        }
+    }
 
-            // Safety net: capture any remaining Console.Error output from core
-            // (most errors now route through observer.OnError, but fallback Console.Error
-            // calls still exist for when no observer is available)
-            var originalStderr = Console.Error;
-            var stderrCapture = new StringWriter();
-            Console.SetError(stderrCapture);
+    /// <summary>
+    /// Auto-detect context window from server if the config value looks like a default.
+    /// Priority: 1) models.json value (if explicitly set/non-default) 2) server query 3) fallback
+    /// </summary>
+    private static async Task<ResolvedModel> DetectContextWindowAsync(ResolvedModel resolved)
+    {
+        // If models.json has a non-default context window, trust it
+        if (resolved.ContextWindow != 32768)
+            return resolved;
 
-            try
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using IModelClient client = resolved.ApiType == "anthropic"
+                ? new AnthropicClient(
+                    resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
+                    string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                    resolved.Headers, resolved.AuthType)
+                : new ModelClient(
+                    resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
+                    string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                    resolved.Headers);
+
+            var detected = await client.QueryContextWindow(cts.Token);
+            if (detected.HasValue && detected.Value > 0)
+                return resolved with { ContextWindow = detected.Value };
+        }
+        catch
+        {
+            // Detection failed, use config value
+        }
+
+        return resolved;
+    }
+
+    /// <summary>Show provider setup dialog (first run, no providers configured).</summary>
+    private static ResolvedModel? ShowEndpointSetup()
+    {
+        var dialog = new EndpointSetupDialog();
+        Application.Run(dialog);
+        return dialog.Result;
+    }
+
+    /// <summary>Show model picker. Loops back if manual/endpoint entry is cancelled.</summary>
+    private static ResolvedModel? ShowModelSelection()
+    {
+        while (true)
+        {
+            var dialog = new ModelSelectionDialog();
+            Application.Run(dialog);
+
+            if (dialog.ShowEndpointSetup)
             {
-                await console.Status()
-                    .Spinner(Spinner.Known.Dots)
-                    .StartAsync($"Running {resolved!.ModelId}...", async ctx =>
-                    {
-                        // Multi-turn: preserve history for follow-up turns
-                        var isFirstTurn = agentRef.History.Count == 0;
-                        var task = agentRef.RunAsync(effectiveInput, cts.Token,
-                            clearHistory: isFirstTurn);
-                        while (!task.IsCompleted)
-                        {
-                            CheckResize(console, observer);
-                            observer.Drain(console);
-                            var preview = observer.StreamingPreview;
-                            var status = string.IsNullOrEmpty(preview)
-                                ? $"Running {resolved!.ModelId}... Step {observer.CurrentStep}"
-                                : Markup.Escape(preview);
-                            ctx.Status(status);
-                            await Task.Delay(100, cts.Token);
-                        }
-                        result2 = await task;
-                    });
-            }
-            catch (OperationCanceledException)
-            {
-                console.MarkupLine("[yellow]Cancelled.[/]");
-                console.WriteLine();
+                var result = ShowEndpointSetup();
+                if (result != null) return result;
                 continue;
             }
-            finally
+
+            if (dialog.ShowManualEntry)
             {
-                Console.SetError(originalStderr);
-                _currentCts = null;  // Clear the cancellation token reference
+                var manual = new ManualModelDialog();
+                Application.Run(manual);
+                if (manual.Result != null) return manual.Result;
+                continue;
             }
 
-            // Show captured stderr as clean error messages
-            // (don't deduplicate -- repeated errors are meaningful)
-            var stderrLines = stderrCapture.ToString()
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Select(l => l.Trim())
-                .Where(l => l.Length > 0)
-                .Take(10)
-                .ToList();
-            foreach (var line in stderrLines)
-            {
-                var msg = line.Length > 200 ? line[..200] + "..." : line;
-                observer.Record(c => c.MarkupLine($"[red][stderr] {Markup.Escape(msg)}[/]"));
-            }
-
-            sw.Stop();
-            observer.Drain(console);
-
-            if (result2 != null)
-            {
-                // Capture values for the closure
-                var doneStep = observer.CurrentStep;
-                var doneMs = sw.ElapsedMilliseconds;
-                var doneResult = result2;
-                var maxCtx = resolved!.ContextWindow;
-                observer.Record(c => StatusBar.RenderDone(c, modelId, doneResult, doneStep, doneMs, observer, maxCtx));
-
-                // Auto-show diffs if configured and files were changed
-                if (_tuiConfig.AutoShowDiffs && result2.FilesChanged.Count > 0)
-                {
-                    var lastFile = result2.FilesChanged.LastOrDefault();
-                    if (lastFile != null)
-                        observer.Record(c => DiffViewer.ShowLastDiff(c, lastFile));
-                }
-            }
+            return dialog.SelectedModel;
         }
-
-        logger?.Dispose();
-        LeaveAlternateScreen();
-        return 0;
-    }
-
-    private enum CmdResult { Continue, Quit, Reset }
-
-    private record CmdHandleResult(CmdResult Result, ResolvedModel? NewModel = null,
-        bool ResetAgent = false, bool DisposeLogger = false);
-
-    private static async Task<CmdHandleResult> HandleCommand(
-        string input, IAnsiConsole console, ResolvedModel? resolved,
-        TuiObserver observer, Agent? agent, string workingDir)
-    {
-        var parts = input.Split(' ', 2);
-        var cmd = parts[0].ToLowerInvariant();
-        var arg = parts.Length > 1 ? parts[1].Trim() : "";
-
-        switch (cmd)
-        {
-            case ":quit" or ":q" or ":exit":
-                LeaveAlternateScreen();
-                console.MarkupLine("[dim]Goodbye![/]");
-                return new CmdHandleResult(CmdResult.Quit);
-
-            case ":hide" or ":sh" or ":shell":
-                // Drop back to the user's terminal, come back to same state
-                LeaveAlternateScreen();
-                Console.Out.Flush();
-
-                var shell = Environment.GetEnvironmentVariable("SHELL") ?? "/bin/bash";
-                console.MarkupLine("[dim]Spawning shell. Type 'exit' or Ctrl+D to return to little helper.[/]");
-                Console.Out.Flush();
-
-                var psi = new ProcessStartInfo(shell)
-                {
-                    UseShellExecute = false,
-                    WorkingDirectory = workingDir
-                };
-                try
-                {
-                    var shellProc = Process.Start(psi);
-                    shellProc?.WaitForExit();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Failed to start shell: {ex.Message}");
-                }
-
-                // Re-enter alternate buffer and redraw
-                EnterAlternateScreen();
-                Console.Out.Flush();
-                _lastConsoleWidth = Console.WindowWidth;
-                observer.Redraw(console);
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":model":
-                ResolvedModel? newResolved;
-                if (string.IsNullOrEmpty(arg))
-                {
-                    newResolved = await ModelSelector.SelectAsync(console);
-                }
-                else
-                {
-                    newResolved = ModelConfig.Load().Resolve(arg);
-                    if (newResolved == null)
-                        console.MarkupLine($"[red]Unknown model: {Markup.Escape(arg)}[/]");
-                }
-                if (newResolved != null)
-                    console.MarkupLine($"[green]Switched to {newResolved.ModelId}[/]");
-                return new CmdHandleResult(CmdResult.Continue, newResolved);
-
-            case ":tokens":
-                if (agent != null && resolved != null)
-                    TokenBudget.Render(console, agent.History, resolved.ContextWindow, observer.TotalTokens, observer.TotalThinkingTokens);
-                else
-                    console.MarkupLine("[dim]No conversation yet.[/]");
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":history":
-                if (agent?.History.Count > 0) RenderHistory(console, agent.History);
-                else console.MarkupLine("[dim]No conversation history yet.[/]");
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":sessions":
-                if (!string.IsNullOrEmpty(arg) && int.TryParse(arg, out var sessionIdx))
-                    SessionManager.ShowSession(console, sessionIdx);
-                else
-                    SessionManager.BrowseSessions(console);
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":skills":
-                var skillContent = SkillBrowser.Browse(console, workingDir);
-                if (skillContent != null)
-                {
-                    _pendingSkillContent = skillContent;
-                    console.MarkupLine("[dim]Skill loaded. It will be prepended to your next prompt.[/]");
-                }
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":diff":
-                if (agent != null)
-                {
-                    var lastFile = agent.History
-                        .Where(m => m.Role == "tool" && m.ToolResult?.FilePath != null && !m.ToolResult.IsError)
-                        .Select(m => m.ToolResult!.FilePath!)
-                        .LastOrDefault();
-                    if (lastFile != null) DiffViewer.ShowLastDiff(console, lastFile);
-                    else console.MarkupLine("[dim]No file writes in this session.[/]");
-                }
-                else console.MarkupLine("[dim]No conversation yet.[/]");
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":files":
-                if (agent != null)
-                {
-                    var files = agent.History
-                        .Where(m => m.Role == "tool" && m.ToolResult?.FilePath != null && !m.ToolResult.IsError)
-                        .Select(m => m.ToolResult!.FilePath!)
-                        .Distinct()
-                        .ToList();
-                    if (files.Count > 0)
-                    {
-                        console.MarkupLine("[bold]Files changed this session:[/]");
-                        foreach (var f in files)
-                            console.MarkupLine($"  [blue]{Markup.Escape(f)}[/]");
-                        console.WriteLine();
-                    }
-                    else console.MarkupLine("[dim]No files changed yet.[/]");
-                }
-                else console.MarkupLine("[dim]No conversation yet.[/]");
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":arena":
-                console.MarkupLine("[bold]Select two models for arena mode:[/]");
-                console.MarkupLine("[dim]Model 1:[/]");
-                var m1 = await ModelSelector.SelectAsync(console);
-                if (m1 == null) return new CmdHandleResult(CmdResult.Continue);
-                console.MarkupLine("[dim]Model 2:[/]");
-                var m2 = await ModelSelector.SelectAsync(console);
-                if (m2 == null) return new CmdHandleResult(CmdResult.Continue);
-                var arenaPrompt = console.Prompt(new TextPrompt<string>("[bold]Arena prompt:[/]"));
-                await ModelArena.RunArena(console, arenaPrompt, m1, m2, workingDir, _tuiConfig);
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":config":
-                console.MarkupLine("[bold]TUI Config[/] [dim](~/.little_helper/tui.json)[/]");
-                console.MarkupLine($"  [blue]thinking_mode[/]:       {_tuiConfig.ThinkingMode}");
-                console.MarkupLine($"  [blue]show_token_budget[/]:   {_tuiConfig.ShowTokenBudget}");
-                console.MarkupLine($"  [blue]auto_show_diffs[/]:      {_tuiConfig.AutoShowDiffs}");
-                console.MarkupLine($"  [blue]max_tool_output_lines[/]: {_tuiConfig.MaxToolOutputLines}");
-                console.MarkupLine($"  [blue]max_steps[/]:           {_tuiConfig.MaxSteps}");
-                console.MarkupLine($"  [blue]default_model[/]:       {_tuiConfig.DefaultModel ?? "(none)"}");
-                console.MarkupLine($"  [blue]streaming[/]:           {_tuiConfig.Streaming}");
-                console.MarkupLine($"  [blue]git_checkpoint[/]:      {_tuiConfig.GitCheckpoint}");
-                console.MarkupLine($"  [blue]theme[/]:               {_tuiConfig.Theme}");
-                console.MarkupLine($"  [blue]verbose[/]:             {_tuiConfig.Verbose}");
-                console.WriteLine();
-                console.MarkupLine("[dim]Edit ~/.little_helper/tui.json to change settings.[/]");
-                return new CmdHandleResult(CmdResult.Continue);
-
-            case ":reset":
-                agent?.ClearHistory();
-                console.MarkupLine("[dim]Conversation reset.[/]");
-                return new CmdHandleResult(CmdResult.Reset, ResetAgent: true, DisposeLogger: true);
-
-            case ":yolo":
-                _yoloMode = !_yoloMode;
-                var status = _yoloMode ? "[green]enabled[/]" : "[dim]disabled[/]";
-                console.MarkupLine($"Yolo mode {status}. Agent can now write outside working directory.");
-                // Recreate agent with new yolo setting
-                return new CmdHandleResult(CmdResult.Reset, ResetAgent: true, DisposeLogger: false);
-
-            case ":help":
-                console.MarkupLine("[bold]Commands:[/]");
-                console.MarkupLine($"  [blue]:model[/] {Markup.Escape("[name]")}   Switch model");
-                console.MarkupLine("  [blue]:tokens[/]         Show token budget");
-                console.MarkupLine("  [blue]:history[/]        Show conversation history");
-                console.MarkupLine($"  [blue]:sessions[/] {Markup.Escape("[N]")}   Browse sessions / show session #N");
-                console.MarkupLine("  [blue]:skills[/]         Browse and inject skills");
-                console.MarkupLine("  [blue]:diff[/]           Show diff for last file write");
-                console.MarkupLine("  [blue]:files[/]          List files changed this session");
-                console.MarkupLine("  [blue]:arena[/]          A/B test two models side-by-side");
-                console.MarkupLine("  [blue]:config[/]         Show TUI config");
-                console.MarkupLine("  [blue]:reset[/]          Reset conversation");
-                console.MarkupLine("  [blue]:yolo[/]           Toggle write-outside-workdir mode");
-                console.MarkupLine("  [blue]:help[/]           Show this help");
-                console.MarkupLine("  [blue]:hide[/]           Drop to shell, return with 'exit'");
-                console.MarkupLine("  [blue]:quit[/]           Exit");
-                console.WriteLine();
-                console.MarkupLine("[dim]During agent run: Ctrl+C = cancel[/]");
-                console.MarkupLine("[dim]Start with --yolo to enable write-outside-workdir from the start[/]");
-                return new CmdHandleResult(CmdResult.Continue);
-
-            default:
-                console.MarkupLine($"[red]Unknown command: {Markup.Escape(cmd)}[/]  Type [blue]:help[/] for commands");
-                return new CmdHandleResult(CmdResult.Continue);
-        }
-    }
-
-    private static void RenderHistory(IAnsiConsole console, IReadOnlyList<ChatMessage> history)
-    {
-        var table = new Table().Border(TableBorder.Rounded).AddColumn("Role").AddColumn("Content");
-
-        foreach (var msg in history.TakeLast(20))
-        {
-            var content = msg.Content ?? "(tool calls)";
-            if (content.Length > 80) content = content[..80] + "...";
-            var roleColor = msg.Role switch { "system" => "blue", "user" => "green", "assistant" => "teal", "tool" => "yellow", _ => "white" };
-            table.AddRow($"[{roleColor}]{msg.Role}[/]", Markup.Escape(content));
-        }
-
-        console.Write(table);
-        console.WriteLine();
     }
 }

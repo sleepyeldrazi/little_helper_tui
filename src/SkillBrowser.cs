@@ -1,76 +1,96 @@
-using System.Text.Json;
-using Spectre.Console;
+using System.ComponentModel;
 using LittleHelper;
+using LittleHelperTui.Views;
+using Terminal.Gui;
 
 namespace LittleHelperTui;
 
 /// <summary>
-/// Skill browser. Uses SkillDiscovery to list available skills,
-/// renders them as a Spectre tree, and allows injecting skills into prompts.
+/// Skill browser - uses core SkillDiscovery, shows name + description.
 /// </summary>
 public static class SkillBrowser
 {
-    /// <summary>Browse and optionally inject a skill.</summary>
-    /// <returns>Skill content to inject, or null if cancelled.</returns>
-    public static string? Browse(IAnsiConsole console, string workingDir)
+    /// <summary>
+    /// Browse for skills and return selected skill content.
+    /// </summary>
+    public static string? Browse(string workingDir)
     {
         var discovery = new SkillDiscovery();
         discovery.Discover(workingDir);
 
         if (discovery.Skills.Count == 0)
         {
-            console.MarkupLine("[dim]No skills found.[/]");
-            console.MarkupLine("[dim]Place SKILL.md files in ~/.little_helper/skills/ or .little_helper/skills/[/]");
+            MessageBox.ErrorQuery("No Skills", "No skills found in ~/.little_helper/skills/ or ./.little_helper/skills/", "OK");
             return null;
         }
 
-        // Build selection list
-        var items = new List<SkillItem>();
-        foreach (var skill in discovery.Skills)
-            items.Add(new SkillItem(skill));
-
-        items.Add(new SkillItem(null)); // Cancel option
-
-        var selected = console.Prompt(
-            new SelectionPrompt<SkillItem>()
-                .Title("[bold]Skills:[/]")
-                .PageSize(15)
-                .UseConverter(item => item.SkillDef != null
-                    ? $"{item.SkillDef.Name}  [dim]{item.SkillDef.Description}[/]"
-                    : "[dim]Cancel[/]")
-                .AddChoices(items));
-
-        if (selected.SkillDef == null)
-            return null;
-
-        // Preview the skill
-        var skillDef = selected.SkillDef;
-        try
-        {
-            var content = File.ReadAllText(skillDef.FilePath);
-            console.Write(new Panel(Markup.Escape(content.Length > 500 ? content[..500] + "..." : content))
-                .Header($"[blue]{skillDef.Name}[/]")
-                .Border(BoxBorder.Rounded)
-                .Expand());
-            console.WriteLine();
-
-            // Ask if they want to inject
-            var inject = console.Prompt(
-                new ConfirmationPrompt("[bold]Inject this skill into your next prompt?[/]"));
-
-            if (inject)
-            {
-                console.MarkupLine($"[green]Skill '{skillDef.Name}' will be injected.[/]");
-                return content;
-            }
-        }
-        catch (Exception ex)
-        {
-            console.MarkupLine($"[red]Error reading skill: {Markup.Escape(ex.Message)}[/]");
-        }
-
-        return null;
+        var dialog = new SkillSelectionDialog(discovery.Skills);
+        Application.Run(dialog);
+        return dialog.SelectedContent;
     }
 
-    private record SkillItem(SkillDef? SkillDef);
+    /// <summary>
+    /// Dialog for selecting a skill. Shows name and description.
+    /// </summary>
+    private class SkillSelectionDialog : Dialog
+    {
+        public string? SelectedContent { get; private set; }
+
+        private readonly IReadOnlyList<SkillDef> _skills;
+        private readonly ListView _listView;
+
+        public SkillSelectionDialog(IReadOnlyList<SkillDef> skills)
+        {
+            _skills = skills;
+            Title = "Skills";
+            Width = Dim.Percent(60);
+            Height = Dim.Percent(70);
+            ColorScheme = DarkColors.Dialog;
+
+            var items = skills.Select(s => $"{s.Name}  {s.Description}").ToList();
+
+            _listView = new ListView
+            {
+                X = 1,
+                Y = 1,
+                Width = Dim.Fill(2),
+                Height = Dim.Fill(4),
+                Source = new ListWrapper<string>(
+                    new System.Collections.ObjectModel.ObservableCollection<string>(items))
+            };
+
+            _listView.OpenSelectedItem += (s, e) => SelectAndClose(e.Item);
+
+            var selectButton = new Button { Title = "Select", IsDefault = true };
+            selectButton.Accept += (s, e) =>
+            {
+                SelectAndClose(_listView.SelectedItem);
+                if (e is HandledEventArgs he) he.Handled = true;
+            };
+
+            var cancelButton = new Button { Title = "Cancel" };
+            cancelButton.Accept += (s, e) =>
+            {
+                Application.RequestStop();
+                if (e is HandledEventArgs he) he.Handled = true;
+            };
+
+            AddButton(selectButton);
+            AddButton(cancelButton);
+            Add(_listView);
+        }
+
+        private void SelectAndClose(int index)
+        {
+            if (index >= 0 && index < _skills.Count)
+            {
+                try
+                {
+                    SelectedContent = File.ReadAllText(_skills[index].FilePath);
+                }
+                catch { }
+                Application.RequestStop();
+            }
+        }
+    }
 }

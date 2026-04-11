@@ -53,6 +53,10 @@ public class TuiConfig
     [JsonPropertyName("verbose")]
     public bool Verbose { get; set; } = false;
 
+    // Console driver: "net" = NetDriver (truecolor, slower), "curses" = CursesDriver (16-color, faster)
+    [JsonPropertyName("driver")]
+    public string Driver { get; set; } = "net";
+
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".little_helper", "tui.json");
