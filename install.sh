@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# install.sh — little helper TUI installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/sleepyeldrazi/little_helper_tui/main/install.sh | bash
+# install.sh — little helper TUI installer (Terminal.Gui v2 rewrite branch)
+# Usage: curl -fsSL https://raw.githubusercontent.com/sleepyeldrazi/little_helper_tui/plan/terminal-gui-rewrite/install.sh | bash
 #
 # What it does:
 #   1. Detects OS (Linux/macOS) and arch
@@ -120,7 +120,7 @@ if [ -d "$REPO_DIR/.git" ]; then
 else
     info "Cloning little_helper_tui -> ${REPO_DIR}"
     mkdir -p "$INSTALL_DIR"
-    git clone --recurse-submodules \
+    git clone --branch plan/terminal-gui-rewrite --recurse-submodules \
         https://github.com/sleepyeldrazi/little_helper_tui.git \
         "$REPO_DIR" 2>&1 || die "git clone failed"
     cd "$REPO_DIR"
