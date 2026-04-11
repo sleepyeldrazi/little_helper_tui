@@ -12,9 +12,12 @@ class Program
         var yoloMode = args.Contains("--yolo") || args.Contains("-y");
         var config = TuiConfig.Load();
 
-        // Ensure truecolor is available (Terminal.Gui may not recognize xterm-ghostty etc.)
-        var colorTerm = Environment.GetEnvironmentVariable("COLORTERM") ?? "";
-        if (string.IsNullOrEmpty(colorTerm))
+        // Ensure truecolor works — terminals like Ghostty set TERM to values that
+        // ncurses/terminfo doesn't recognize, breaking Terminal.Gui's color detection.
+        var term = Environment.GetEnvironmentVariable("TERM") ?? "";
+        if (term is "xterm-ghostty" or "wezterm" || term.EndsWith("-direct"))
+            Environment.SetEnvironmentVariable("TERM", "xterm-256color");
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COLORTERM")))
             Environment.SetEnvironmentVariable("COLORTERM", "truecolor");
 
         Application.Init();

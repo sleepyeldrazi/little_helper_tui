@@ -141,6 +141,14 @@ cat > "${BIN_DIR}/little" << WRAPPER
 # little helper launcher — installed by install.sh
 export DOTNET_ROOT="${DOTNET_DIR}"
 export PATH="${DOTNET_DIR}:\${PATH}"
+
+# Ensure truecolor works — some terminals (Ghostty, WezTerm, etc.) set TERM to
+# values that ncurses/terminfo doesn't recognize, breaking Terminal.Gui's color support.
+export COLORTERM="\${COLORTERM:-truecolor}"
+case "\$TERM" in
+    xterm-ghostty|*-direct) export TERM="xterm-256color" ;;
+esac
+
 exec "${BINARY}" "\$@"
 WRAPPER
 chmod +x "${BIN_DIR}/little"
