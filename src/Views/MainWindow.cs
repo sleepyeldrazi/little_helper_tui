@@ -5,104 +5,64 @@ using Attribute = Terminal.Gui.Attribute;
 namespace LittleHelperTui.Views;
 
 /// <summary>
-/// Dark color schemes matching the old Spectre.Console TUI palette.
+/// Color schemes: dark background, softer palette matching old Spectre TUI.
 /// </summary>
 public static class DarkColors
 {
-    /// <summary>Base scheme: light grey on black.</summary>
-    public static readonly ColorScheme Base = new()
-    {
-        Normal = new Attribute(Color.Gray, Color.Black),
-        Focus = new Attribute(Color.White, Color.Black),
-        HotNormal = new Attribute(Color.White, Color.Black),
-        HotFocus = new Attribute(Color.White, Color.Black)
-    };
+    // Main text: light grey on black
+    public static readonly ColorScheme Base = MakeScheme(Color.Gray, Color.Black);
 
-    /// <summary>User messages: green on black.</summary>
-    public static readonly ColorScheme User = new()
-    {
-        Normal = new Attribute(Color.Green, Color.Black),
-        Focus = new Attribute(Color.BrightGreen, Color.Black),
-        HotNormal = new Attribute(Color.BrightGreen, Color.Black),
-        HotFocus = new Attribute(Color.BrightGreen, Color.Black)
-    };
+    // User panel border: green on black
+    public static readonly ColorScheme UserBorder = MakeScheme(Color.Green, Color.Black);
 
-    /// <summary>Assistant messages: blue on black.</summary>
-    public static readonly ColorScheme Assistant = new()
-    {
-        Normal = new Attribute(Color.Blue, Color.Black),
-        Focus = new Attribute(Color.BrightBlue, Color.Black),
-        HotNormal = new Attribute(Color.BrightBlue, Color.Black),
-        HotFocus = new Attribute(Color.BrightBlue, Color.Black)
-    };
+    // Assistant panel border: blue on black (soft teal-ish)
+    public static readonly ColorScheme AssistantBorder = MakeScheme(Color.Blue, Color.Black);
 
-    /// <summary>Thinking: dim grey on black.</summary>
-    public static readonly ColorScheme Thinking = new()
-    {
-        Normal = new Attribute(Color.DarkGray, Color.Black),
-        Focus = new Attribute(Color.Gray, Color.Black),
-        HotNormal = new Attribute(Color.Gray, Color.Black),
-        HotFocus = new Attribute(Color.Gray, Color.Black)
-    };
+    // Thinking panel border: dark grey on black
+    public static readonly ColorScheme ThinkingBorder = MakeScheme(Color.DarkGray, Color.Black);
 
-    /// <summary>Tool success: green on black.</summary>
-    public static readonly ColorScheme ToolOk = new()
-    {
-        Normal = new Attribute(Color.Green, Color.Black),
-        Focus = new Attribute(Color.BrightGreen, Color.Black),
-        HotNormal = new Attribute(Color.BrightGreen, Color.Black),
-        HotFocus = new Attribute(Color.BrightGreen, Color.Black)
-    };
+    // Panel content: white on black (readable)
+    public static readonly ColorScheme Content = MakeScheme(Color.White, Color.Black);
 
-    /// <summary>Tool error: red on black.</summary>
-    public static readonly ColorScheme ToolErr = new()
-    {
-        Normal = new Attribute(Color.Red, Color.Black),
-        Focus = new Attribute(Color.BrightRed, Color.Black),
-        HotNormal = new Attribute(Color.BrightRed, Color.Black),
-        HotFocus = new Attribute(Color.BrightRed, Color.Black)
-    };
+    // Tool success icon/header
+    public static readonly ColorScheme ToolOk = MakeScheme(Color.Green, Color.Black);
 
-    /// <summary>Dim info text.</summary>
-    public static readonly ColorScheme Dim = new()
-    {
-        Normal = new Attribute(Color.DarkGray, Color.Black),
-        Focus = new Attribute(Color.DarkGray, Color.Black),
-        HotNormal = new Attribute(Color.DarkGray, Color.Black),
-        HotFocus = new Attribute(Color.DarkGray, Color.Black)
-    };
+    // Tool error icon/header
+    public static readonly ColorScheme ToolErr = MakeScheme(Color.Red, Color.Black);
 
-    /// <summary>Status/done: bright on black.</summary>
-    public static readonly ColorScheme Status = new()
-    {
-        Normal = new Attribute(Color.White, Color.Black),
-        Focus = new Attribute(Color.White, Color.Black),
-        HotNormal = new Attribute(Color.White, Color.Black),
-        HotFocus = new Attribute(Color.White, Color.Black)
-    };
+    // Dim info/detail text
+    public static readonly ColorScheme Dim = MakeScheme(Color.DarkGray, Color.Black);
 
-    /// <summary>Yellow warnings.</summary>
-    public static readonly ColorScheme Warning = new()
-    {
-        Normal = new Attribute(Color.Yellow, Color.Black),
-        Focus = new Attribute(Color.BrightYellow, Color.Black),
-        HotNormal = new Attribute(Color.BrightYellow, Color.Black),
-        HotFocus = new Attribute(Color.BrightYellow, Color.Black)
-    };
+    // Yellow warnings/compaction
+    public static readonly ColorScheme Warning = MakeScheme(Color.Yellow, Color.Black);
 
-    /// <summary>Dialog scheme: white on dark grey.</summary>
+    // Bright white for emphasis
+    public static readonly ColorScheme Bright = MakeScheme(Color.White, Color.Black);
+
+    // Red errors
+    public static readonly ColorScheme Error = MakeScheme(Color.Red, Color.Black);
+
+    // Dialog: soft grey on very dark grey, subtle highlight
     public static readonly ColorScheme Dialog = new()
     {
-        Normal = new Attribute(Color.White, Color.DarkGray),
-        Focus = new Attribute(Color.Black, Color.Cyan),
-        HotNormal = new Attribute(Color.Cyan, Color.DarkGray),
-        HotFocus = new Attribute(Color.Black, Color.Cyan)
+        Normal = new Attribute(Color.Gray, new Color(30, 30, 30)),
+        Focus = new Attribute(Color.White, new Color(50, 50, 60)),
+        HotNormal = new Attribute(Color.White, new Color(30, 30, 30)),
+        HotFocus = new Attribute(Color.White, new Color(50, 50, 60))
+    };
+
+    private static ColorScheme MakeScheme(Color fg, Color bg) => new()
+    {
+        Normal = new Attribute(fg, bg),
+        Focus = new Attribute(fg, bg),
+        HotNormal = new Attribute(fg, bg),
+        HotFocus = new Attribute(fg, bg)
     };
 }
 
 /// <summary>
-/// Main application window. Dark background, no border chrome.
-/// Chat area is a ScrollView of colored Label views. Input is a TextField at bottom.
+/// Main window: dark, borderless, full-screen.
+/// Chat area is a ScrollView of colored Label blocks. Input at bottom with "> " prompt.
 /// </summary>
 public class MainWindow : Window
 {
@@ -112,7 +72,6 @@ public class MainWindow : Window
     private readonly TuiController _controller;
     private bool _autoScroll = true;
 
-    // Input history
     private readonly List<string> _history = new();
     private int _historyIndex = -1;
     private string _savedDraft = "";
@@ -125,48 +84,38 @@ public class MainWindow : Window
         Title = "";
         BorderStyle = LineStyle.None;
         ColorScheme = DarkColors.Base;
-        X = 0;
-        Y = 0;
+        X = 0; Y = 0;
         Width = Dim.Fill();
         Height = Dim.Fill();
 
-        // Inner content view that grows as labels are added
         _chatContent = new View
         {
-            X = 0,
-            Y = 0,
+            X = 0, Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Auto(),
             ColorScheme = DarkColors.Base
         };
 
-        // ScrollView wrapping the content
         _scrollView = new ScrollView
         {
-            X = 0,
-            Y = 0,
+            X = 0, Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill(1),
             ColorScheme = DarkColors.Base
         };
         _scrollView.Add(_chatContent);
 
-        // ">" prompt
         var promptLabel = new Label
         {
-            X = 0,
-            Y = Pos.AnchorEnd(1),
+            X = 0, Y = Pos.AnchorEnd(1),
             Text = "> ",
             ColorScheme = DarkColors.Dim
         };
 
-        // Input field
         _inputField = new TextField
         {
-            X = 2,
-            Y = Pos.AnchorEnd(1),
-            Width = Dim.Fill(),
-            Height = 1,
+            X = 2, Y = Pos.AnchorEnd(1),
+            Width = Dim.Fill(), Height = 1,
             Text = "",
             ColorScheme = DarkColors.Base
         };
@@ -174,44 +123,23 @@ public class MainWindow : Window
         Add(_scrollView, promptLabel, _inputField);
 
         _inputField.Accept += OnInputAccepting;
-
         _inputField.KeyDown += (s, e) =>
         {
             switch (e.KeyCode)
             {
-                case KeyCode.CursorUp:
-                    NavigateHistory(-1);
-                    e.Handled = true;
-                    break;
-                case KeyCode.CursorDown:
-                    NavigateHistory(1);
-                    e.Handled = true;
-                    break;
-                case KeyCode.PageUp:
-                    ScrollChat(-10);
-                    e.Handled = true;
-                    break;
-                case KeyCode.PageDown:
-                    ScrollChat(10);
-                    e.Handled = true;
-                    break;
+                case KeyCode.CursorUp: NavigateHistory(-1); e.Handled = true; break;
+                case KeyCode.CursorDown: NavigateHistory(1); e.Handled = true; break;
+                case KeyCode.PageUp: ScrollChat(-10); e.Handled = true; break;
+                case KeyCode.PageDown: ScrollChat(10); e.Handled = true; break;
             }
         };
 
         _inputField.SetFocus();
     }
 
-    public void SetStatus(string text) { /* inline in chat */ }
+    public void SetStatus(string text) { }
 
-    /// <summary>Get terminal width for panel formatting.</summary>
-    public int GetWidth()
-    {
-        return _scrollView.Frame.Width > 0 ? _scrollView.Frame.Width - 1 : 80;
-    }
-
-    /// <summary>
-    /// Add a colored text block to the chat. Each block is a Label with its own ColorScheme.
-    /// </summary>
+    /// <summary>Add a colored text block to the chat.</summary>
     public void AddColoredBlock(string text, ColorScheme? scheme = null)
     {
         Application.Invoke(() =>
@@ -229,19 +157,10 @@ public class MainWindow : Window
             };
 
             _chatContent.Add(label);
-
-            if (_autoScroll)
-                ScrollToBottom();
+            if (_autoScroll) ScrollToBottom();
         });
     }
 
-    /// <summary>Convenience: add a line with default color.</summary>
-    public void AppendLine(string text = "")
-    {
-        AddColoredBlock(text, DarkColors.Base);
-    }
-
-    /// <summary>Clear all chat output.</summary>
     public void ClearChat()
     {
         Application.Invoke(() =>
@@ -296,7 +215,6 @@ public class MainWindow : Window
     private void NavigateHistory(int direction)
     {
         if (_history.Count == 0) return;
-
         if (direction < 0)
         {
             if (_historyIndex == -1)
@@ -304,8 +222,7 @@ public class MainWindow : Window
                 _savedDraft = _inputField.Text ?? "";
                 _historyIndex = _history.Count - 1;
             }
-            else if (_historyIndex > 0)
-                _historyIndex--;
+            else if (_historyIndex > 0) _historyIndex--;
             _inputField.Text = _history[_historyIndex];
         }
         else

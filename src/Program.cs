@@ -65,7 +65,7 @@ class Program
             controller.SetModel(resolved);
 
             // Show welcome banner (dim, like old Spectre)
-            mainWindow.AddColoredBlock("little helper", DarkColors.Assistant);
+            mainWindow.AddColoredBlock("little helper", DarkColors.AssistantBorder);
             mainWindow.AddColoredBlock($"Using {resolved.ModelId} ({resolved.BaseUrl})", DarkColors.Dim);
             mainWindow.AddColoredBlock("Hint: use :help for the command list", DarkColors.Dim);
             mainWindow.AddColoredBlock("", DarkColors.Base);

@@ -6,13 +6,9 @@ using Terminal.Gui;
 namespace LittleHelperTui.Observers;
 
 /// <summary>
-/// IAgentObserver that renders agent activity as colored text blocks into MainWindow.
-/// Visual style matches the old Spectre.Console TUI:
-/// - Green rounded-border panel for user messages
-/// - Blue rounded-border panel for assistant responses
-/// - Grey rounded-border panel for thinking
-/// - Green/red +/x lines for tool results
-/// - Dim grey for info, red for errors
+/// Renders agent activity as colored text blocks into MainWindow.
+/// Panels split into 3 blocks: colored border top, white content, colored border bottom.
+/// Matches old Spectre visual style.
 /// </summary>
 public class TerminalGuiObserver : IAgentObserver
 {
@@ -67,10 +63,7 @@ public class TerminalGuiObserver : IAgentObserver
 
     // --- IAgentObserver ---
 
-    public void OnStepStart(int step)
-    {
-        CurrentStep = step;
-    }
+    public void OnStepStart(int step) => CurrentStep = step;
 
     public void OnModelResponse(ModelResponse response, int step)
     {
@@ -78,12 +71,11 @@ public class TerminalGuiObserver : IAgentObserver
         TotalThinkingTokens += response.ThinkingTokens;
         _isStreaming = false;
 
-        // Thinking panel (grey)
+        // Thinking (grey border, white content)
         if (!string.IsNullOrEmpty(response.ThinkingContent) && _thinkingMode != "hidden")
         {
             var thinking = response.ThinkingContent;
             string preview;
-
             if (_thinkingMode == "full")
                 preview = thinking;
             else
@@ -98,25 +90,22 @@ public class TerminalGuiObserver : IAgentObserver
             }
 
             var header = $"Thinking ({FormatTokens(response.ThinkingTokens)} thinking, {FormatTokens(response.TokensUsed)} context)";
-            WritePanel(header, preview, DarkColors.Thinking);
+            WritePanel(header, preview, DarkColors.ThinkingBorder);
         }
 
-        // Assistant response (blue)
+        // Assistant (blue border, white content)
         if (!string.IsNullOrWhiteSpace(response.Content))
         {
             var header = $"Assistant Step {step} ({FormatTokens(response.TokensUsed)} context)";
-            WritePanel(header, response.Content, DarkColors.Assistant);
+            WritePanel(header, response.Content, DarkColors.AssistantBorder);
         }
 
-        // Verbose: pending tool calls (yellow)
+        // Verbose: pending tool calls
         if (_verbose && response.ToolCalls.Count > 0)
         {
             var sb = new StringBuilder();
             foreach (var tc in response.ToolCalls)
-            {
-                var detail = FormatToolArgs(tc.Name, tc.Arguments);
-                sb.AppendLine($"  >{tc.Name}({detail})");
-            }
+                sb.AppendLine($"  >{tc.Name}({FormatToolArgs(tc.Name, tc.Arguments)})");
             _mainWindow.AddColoredBlock(sb.ToString(), DarkColors.Warning);
         }
     }
@@ -126,12 +115,16 @@ public class TerminalGuiObserver : IAgentObserver
     public void OnToolCallCompleted(ToolCall call, ToolResult result, long durationMs, int step)
     {
         var icon = result.IsError ? "x" : "+";
-        var scheme = result.IsError ? DarkColors.ToolErr : DarkColors.ToolOk;
-        var detail = FormatToolArgs(call.Name, call.Arguments);
+        var iconScheme = result.IsError ? DarkColors.ToolErr : DarkColors.ToolOk;
 
+        // Icon + tool name line: colored
+        _mainWindow.AddColoredBlock(
+            $"{icon} {call.Name} ({FormatDuration(durationMs)})",
+            iconScheme);
+
+        // Detail + output: dim
         var sb = new StringBuilder();
-        sb.AppendLine($"{icon} {call.Name} ({FormatDuration(durationMs)})");
-        sb.AppendLine($"  {detail}");
+        sb.AppendLine($"  {FormatToolArgs(call.Name, call.Arguments)}");
 
         var output = result.Output;
         if (result.IsError)
@@ -140,72 +133,46 @@ public class TerminalGuiObserver : IAgentObserver
             var errText = output.Length > maxErr ? output[..maxErr] + "..." : output;
             sb.AppendLine($"  {errText}");
         }
-        else if (call.Name.Equals("write", StringComparison.OrdinalIgnoreCase) ||
-                 call.Name.Equals("edit", StringComparison.OrdinalIgnoreCase) ||
-                 call.Name.Equals("patch", StringComparison.OrdinalIgnoreCase))
-        {
+        else if (IsWriteTool(call.Name))
             AppendWriteOutput(sb, output);
-        }
         else if (call.Name.Equals("read", StringComparison.OrdinalIgnoreCase))
-        {
             AppendReadOutput(sb, output);
-        }
         else
-        {
-            var maxLines = Math.Max(3, _maxToolOutputLines / 4);
-            AppendCompactOutput(sb, output, maxLines);
-        }
+            AppendCompactOutput(sb, output, Math.Max(3, _maxToolOutputLines / 4));
 
-        _mainWindow.AddColoredBlock(sb.ToString(), scheme);
+        _mainWindow.AddColoredBlock(sb.ToString(), DarkColors.Dim);
     }
 
-    public void OnStateChange(AgentState from, AgentState to)
-    {
-        CurrentState = to;
-    }
+    public void OnStateChange(AgentState from, AgentState to) => CurrentState = to;
 
     public void OnCompaction(CompactionResult result)
     {
         _mainWindow.AddColoredBlock(
-            $"* Context compacted (saved {result.TokensSaved} tokens)\n",
-            DarkColors.Warning);
+            $"* Context compacted (saved {result.TokensSaved} tokens)", DarkColors.Warning);
     }
 
-    public void OnError(string message)
-    {
-        RenderLogMessage(message);
-    }
+    public void OnError(string message) => RenderLogMessage(message);
 
     public void OnStreamChunk(string contentDelta, string? thinkingDelta)
     {
-        if (!_isStreaming)
-        {
-            _isStreaming = true;
-            _streamingContent.Clear();
-            _streamingThinking.Clear();
-        }
-        if (!string.IsNullOrEmpty(contentDelta))
-            _streamingContent.Append(contentDelta);
-        if (!string.IsNullOrEmpty(thinkingDelta))
-            _streamingThinking.Append(thinkingDelta);
+        if (!_isStreaming) { _isStreaming = true; _streamingContent.Clear(); _streamingThinking.Clear(); }
+        if (!string.IsNullOrEmpty(contentDelta)) _streamingContent.Append(contentDelta);
+        if (!string.IsNullOrEmpty(thinkingDelta)) _streamingThinking.Append(thinkingDelta);
     }
 
     // --- Public helpers ---
 
-    /// <summary>Render user message in green bordered panel.</summary>
     public void AddUserMessage(string text)
     {
-        WritePanel("You", text, DarkColors.User);
-        _mainWindow.AddColoredBlock("", DarkColors.Base); // blank line
+        WritePanel("You", text, DarkColors.UserBorder);
+        _mainWindow.AddColoredBlock("", DarkColors.Base);
     }
 
-    /// <summary>Dim separator line.</summary>
     public void AddSeparator()
     {
         _mainWindow.AddColoredBlock("\u2500\u2500", DarkColors.Dim);
     }
 
-    /// <summary>Status/done message.</summary>
     public void AddStatusMessage(bool success, int steps, long elapsedMs, int maxContext, int filesChanged)
     {
         var icon = success ? "\u2714" : "\u2718";
@@ -214,18 +181,18 @@ public class TerminalGuiObserver : IAgentObserver
         var thinking = FormatTokens(TotalThinkingTokens);
         var maxCtx = FormatTokens(maxContext);
 
-        var sb = new StringBuilder();
-        sb.AppendLine();
-        sb.AppendLine($"{icon} Done {steps} steps, {elapsed}, {context}/{maxCtx} context ({thinking} thinking)");
-        if (filesChanged > 0)
-            sb.AppendLine($"  {filesChanged} files changed. Use :files to list.");
-        sb.AppendLine();
+        // Icon: colored
+        var iconScheme = success ? DarkColors.ToolOk : DarkColors.ToolErr;
+        _mainWindow.AddColoredBlock($"{icon} Done {steps} steps, {elapsed}, {context}/{maxCtx} context ({thinking} thinking)",
+            iconScheme);
 
-        var scheme = success ? DarkColors.ToolOk : DarkColors.ToolErr;
-        _mainWindow.AddColoredBlock(sb.ToString(), scheme);
+        // Files: dim
+        if (filesChanged > 0)
+            _mainWindow.AddColoredBlock($"  {filesChanged} files changed. Use :files to list.", DarkColors.Dim);
+
+        _mainWindow.AddColoredBlock("", DarkColors.Base);
     }
 
-    /// <summary>Add info text in default color.</summary>
     public void AddInfoMessage(string text)
     {
         _mainWindow.AddColoredBlock(text, DarkColors.Base);
@@ -234,52 +201,40 @@ public class TerminalGuiObserver : IAgentObserver
     // --- Panel rendering ---
 
     /// <summary>
-    /// Rounded-border panel expanding to full width with specified color.
-    /// ╭─Header───╮ / │ content │ / ╰───╯
+    /// 3-block panel: colored top border, white content, colored bottom border.
+    /// No right-side borders to avoid width alignment bugs.
     /// </summary>
-    private void WritePanel(string header, string content, ColorScheme scheme)
+    private void WritePanel(string header, string content, ColorScheme borderScheme)
     {
-        var width = _mainWindow.GetWidth();
-        if (width < 20) width = 80;
+        // Top border: ╭─Header──────────
+        _mainWindow.AddColoredBlock(
+            $"\u256d\u2500{header}\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+            borderScheme);
 
+        // Content: white text with │ prefix
         var sb = new StringBuilder();
+        foreach (var line in content.Split('\n'))
+            sb.AppendLine($"\u2502 {line}");
+        _mainWindow.AddColoredBlock(sb.ToString(), DarkColors.Content);
 
-        // Top: ╭─Header───...───╮
-        var headerText = $"\u2500{header}";
-        var topBarLen = Math.Max(0, width - 2 - headerText.Length);
-        sb.AppendLine($"\u256d{headerText}{new string('\u2500', topBarLen)}\u256e");
-
-        // Content: │ text │
-        var innerWidth = width - 4;
-        foreach (var rawLine in content.Split('\n'))
-        {
-            var line = rawLine;
-            while (line.Length > innerWidth)
-            {
-                var chunk = line[..innerWidth];
-                sb.AppendLine($"\u2502 {chunk} \u2502");
-                line = line[innerWidth..];
-            }
-            var padded = line + new string(' ', Math.Max(0, innerWidth - line.Length));
-            sb.AppendLine($"\u2502 {padded} \u2502");
-        }
-
-        // Bottom: ╰───╯
-        sb.AppendLine($"\u2570{new string('\u2500', width - 2)}\u256f");
-
-        _mainWindow.AddColoredBlock(sb.ToString(), scheme);
+        // Bottom border: ╰──────────
+        _mainWindow.AddColoredBlock(
+            "\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+            borderScheme);
     }
 
-    // --- Tool output helpers ---
+    // --- Tool output ---
+
+    private static bool IsWriteTool(string name) =>
+        name.Equals("write", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("edit", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("patch", StringComparison.OrdinalIgnoreCase);
 
     private static void AppendWriteOutput(StringBuilder sb, string output)
     {
         if (string.IsNullOrEmpty(output)) { sb.AppendLine("  (empty)"); return; }
         if (output.Contains("wrote") || output.Contains("written") || output.Length < 100)
-        {
-            sb.AppendLine($"  {output}");
-            return;
-        }
+        { sb.AppendLine($"  {output}"); return; }
 
         var lines = output.Split('\n');
         foreach (var line in lines.Take(8))
@@ -291,7 +246,6 @@ public class TerminalGuiObserver : IAgentObserver
             else
                 sb.AppendLine($"  {line}");
         }
-
         var remaining = lines.Length - 8;
         if (remaining > 0) sb.AppendLine($"  ... {remaining} more lines");
     }
@@ -303,8 +257,8 @@ public class TerminalGuiObserver : IAgentObserver
         sb.AppendLine($"  {lines.Length} lines");
         foreach (var line in lines.Take(6))
         {
-            var truncated = line.Length > 120 ? line[..120] + "..." : line;
-            sb.AppendLine($"  {truncated}");
+            var t = line.Length > 120 ? line[..120] + "..." : line;
+            sb.AppendLine($"  {t}");
         }
         var remaining = lines.Length - 6;
         if (remaining > 0) sb.AppendLine($"  ... {remaining} more lines");
@@ -316,8 +270,8 @@ public class TerminalGuiObserver : IAgentObserver
         var lines = output.Split('\n');
         foreach (var line in lines.Take(maxLines))
         {
-            var truncated = line.Length > 120 ? line[..120] + "..." : line;
-            sb.AppendLine($"  {truncated}");
+            var t = line.Length > 120 ? line[..120] + "..." : line;
+            sb.AppendLine($"  {t}");
         }
         var remaining = lines.Length - maxLines;
         if (remaining > 0) sb.AppendLine($"  ... {remaining} more lines");
@@ -331,28 +285,18 @@ public class TerminalGuiObserver : IAgentObserver
         {
             if (message.Contains("Stall detected") || message.Contains("Step limit") ||
                 message.Contains("Error recovery") || message.Contains("Max error recovery"))
-            {
-                _mainWindow.AddColoredBlock(message, DarkColors.Warning);
-                return;
-            }
-            if (_verbose)
-                _mainWindow.AddColoredBlock(message, DarkColors.Dim);
+            { _mainWindow.AddColoredBlock(message, DarkColors.Warning); return; }
+            if (_verbose) _mainWindow.AddColoredBlock(message, DarkColors.Dim);
             return;
         }
 
         if (message.StartsWith("WARN:") || message.StartsWith("WARN "))
-        {
-            _mainWindow.AddColoredBlock(message, DarkColors.Warning);
-            return;
-        }
+        { _mainWindow.AddColoredBlock(message, DarkColors.Warning); return; }
 
         if (message.StartsWith("[Injected]"))
-        {
-            _mainWindow.AddColoredBlock(message, DarkColors.Dim);
-            return;
-        }
+        { _mainWindow.AddColoredBlock(message, DarkColors.Dim); return; }
 
-        _mainWindow.AddColoredBlock(message, DarkColors.ToolErr);
+        _mainWindow.AddColoredBlock(message, DarkColors.Error);
     }
 
     // --- Formatting ---
