@@ -139,6 +139,7 @@ mkdir -p "$BIN_DIR"
 cat > "${BIN_DIR}/little" << WRAPPER
 #!/usr/bin/env bash
 # little helper launcher — installed by install.sh
+export DOTNET_ROOT="${DOTNET_DIR}"
 export PATH="${DOTNET_DIR}:\${PATH}"
 exec "${BINARY}" "\$@"
 WRAPPER
