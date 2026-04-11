@@ -21,11 +21,11 @@ class Program
 
     private static string EnterAltBuffer => IsMacTerminal
         ? "\x1b[?1049h"  // Terminal.app: no scrollback, but consistent behavior
-        : "\x1b[?1047h\x1b[H\x1b[2J";  // Modern terminals: scrollback supported
+        : "\x1b[?1047h\x1b[H\x1b[2J\x1b[?1000h\x1b[?1002h\x1b[?1006h";  // Modern terminals: scrollback + mouse
 
     private static string LeaveAltBuffer => IsMacTerminal
         ? "\x1b[?1049l"  // Terminal.app
-        : "\x1b[?1047l";  // Modern terminals
+        : "\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?1047l";  // Modern terminals: disable mouse then exit alt buffer
 
     private static void EnterAlternateScreen() => Console.Write(EnterAltBuffer);
     private static void LeaveAlternateScreen() => Console.Write(LeaveAltBuffer);
@@ -176,11 +176,11 @@ class Program
                 continue;
             }
 
+            // Create session logger BEFORE agent so it's available for logging
+            logger ??= new SessionLogger(modelId, workingDir);
+
             // Create agent on first prompt or after reset/model switch
             agent ??= CreateAgent();
-
-            // Create session logger on first prompt (persists until :reset or model switch)
-            logger ??= new SessionLogger(modelId, workingDir);
 
             // Run agent
             console.WriteLine();
