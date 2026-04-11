@@ -40,8 +40,17 @@ public static class StatusBar
         var maxCtx = FormatTokens(maxContext);
         var elapsed = elapsedMs < 1000 ? $"{elapsedMs}ms" : $"{elapsedMs / 1000.0:F1}s";
 
+        // Build scroll indicator if scrolled back
+        var scrollIndicator = "";
+        if (observer.IsScrolled)
+        {
+            scrollIndicator = observer.HasNewContent
+                ? "[yellow]\u2191 new[/] "  // up arrow + "new" in yellow
+                : "[dim]\u2191 scrolled[/] ";  // up arrow + "scrolled" in dim
+        }
+
         console.WriteLine();
-        console.MarkupLine($"{icon} [bold]Done[/] [dim]{steps} steps, {elapsed}, {context}/{maxCtx} context ({thinking} thinking)[/]");
+        console.MarkupLine($"{icon} [bold]Done[/] [dim]{steps} steps, {elapsed}, {context}/{maxCtx} context ({thinking} thinking)[/] {scrollIndicator}");
 
         if (result.FilesChanged.Count > 0)
         {

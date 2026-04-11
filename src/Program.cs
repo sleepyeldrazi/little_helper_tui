@@ -45,6 +45,22 @@ class Program
         catch { /* Console.WindowWidth can throw when no terminal */ }
     }
 
+    /// <summary>Check for scroll input (mouse wheel or Alt+arrows) and apply scrolling.</summary>
+    private static void CheckScroll(TuiObserver observer, IAnsiConsole console)
+    {
+        var scroll = InputHandler.TryReadScrollAction();
+        if (scroll == ScrollAction.Up)
+        {
+            observer.ScrollUp(5);  // scroll up by 5 render actions
+            observer.Redraw(console);
+        }
+        else if (scroll == ScrollAction.Down)
+        {
+            observer.ScrollDown(5);  // scroll down by 5 render actions
+            observer.Redraw(console);
+        }
+    }
+
     static async Task<int> Main(string[] args)
     {
         // Parse --yolo flag
@@ -141,10 +157,19 @@ class Program
         while (true)
         {
             CheckResize(console, observer);
+            CheckScroll(observer, console);  // Process any pending scroll input
             observer.Drain(console);
             observer.Record(c => c.MarkupLine("[dim]──[/]"));
 
             var input = InputHandler.ReadLine(console);
+
+            // Reset scroll on any input (typing or submitting)
+            if (observer.IsScrolled)
+            {
+                observer.ResetScroll();
+                observer.Redraw(console);
+            }
+
             if (input == null) { console.MarkupLine("[dim]Goodbye![/]"); break; }
 
             input = input.Trim();
@@ -264,6 +289,7 @@ class Program
                         while (!task.IsCompleted)
                         {
                             CheckResize(console, observer);
+                            CheckScroll(observer, console);  // Allow scrolling during agent run
                             observer.Drain(console);
                             var preview = observer.StreamingPreview;
                             var status = string.IsNullOrEmpty(preview)

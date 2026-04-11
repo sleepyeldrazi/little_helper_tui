@@ -3,6 +3,9 @@ using Spectre.Console;
 
 namespace LittleHelperTui;
 
+/// <summary>Possible scroll actions from input.</summary>
+public enum ScrollAction { None, Up, Down }
+
 /// <summary>
 /// Custom readline input with cursor movement, editing keys,
 /// and tab-completion for file paths.
@@ -16,6 +19,30 @@ public static class InputHandler
 
     /// <summary>Number of terminal lines the last input occupied (for clearing before panel render).</summary>
     public static int LastRenderedLineCount { get; private set; } = 1;
+
+    // Scroll event handling - shared state for TryReadScrollAction
+    private static readonly object _scrollLock = new();
+    private static ScrollAction _pendingScroll = ScrollAction.None;
+
+    /// <summary>Check if there's a pending scroll action without blocking.</summary>
+    public static ScrollAction TryReadScrollAction()
+    {
+        lock (_scrollLock)
+        {
+            var action = _pendingScroll;
+            _pendingScroll = ScrollAction.None;
+            return action;
+        }
+    }
+
+    /// <summary>Queue a scroll action from mouse/key handler.</summary>
+    private static void QueueScroll(ScrollAction action)
+    {
+        lock (_scrollLock)
+        {
+            _pendingScroll = action;
+        }
+    }
 
     /// <summary>Read a line with full editing support. Returns null on Ctrl+C / Ctrl+D.</summary>
     public static string? ReadLine(IAnsiConsole console, string prompt = ">")
@@ -32,38 +59,40 @@ public static class InputHandler
         {
             var key = Console.ReadKey(true);
 
-            // Detect bracket paste start/end sequences
+            // Detect escape sequences: bracket paste, mouse wheel, Alt+arrows
             // Terminals send \x1b[200~ before pasted content and \x1b[201~ after
             if (key.Key == ConsoleKey.Escape)
             {
-                // Peek ahead to see if this is a bracket paste sequence
-                if (Console.KeyAvailable)
+                var csiAction = TryParseCsiSequence();
+                if (csiAction == CsiResult.BracketPasteStart)
                 {
-                    var next = Console.ReadKey(true);
-                    if (next.KeyChar == '[')
-                    {
-                        // Read the sequence: "200~" or "201~"
-                        var seq = new StringBuilder();
-                        while (Console.KeyAvailable)
-                        {
-                            var ch = Console.ReadKey(true);
-                            if (ch.KeyChar == '~') break;
-                            seq.Append(ch.KeyChar);
-                        }
-                        var seqStr = seq.ToString();
-                        if (seqStr == "200")
-                        {
-                            inBracketPaste = true;
-                            continue;
-                        }
-                        if (seqStr == "201")
-                        {
-                            inBracketPaste = false;
-                            continue;
-                        }
-                        // Unknown escape sequence — ignore
-                        continue;
-                    }
+                    inBracketPaste = true;
+                    continue;
+                }
+                if (csiAction == CsiResult.BracketPasteEnd)
+                {
+                    inBracketPaste = false;
+                    continue;
+                }
+                if (csiAction == CsiResult.MouseWheelUp)
+                {
+                    QueueScroll(ScrollAction.Up);
+                    continue;
+                }
+                if (csiAction == CsiResult.MouseWheelDown)
+                {
+                    QueueScroll(ScrollAction.Down);
+                    continue;
+                }
+                if (csiAction == CsiResult.AltUp)
+                {
+                    QueueScroll(ScrollAction.Up);
+                    continue;
+                }
+                if (csiAction == CsiResult.AltDown)
+                {
+                    QueueScroll(ScrollAction.Down);
+                    continue;
                 }
                 // Plain Escape — clear line
                 ClearLine(buf, cursor, promptLen, prevRenderedLines);
@@ -431,5 +460,66 @@ public static class InputHandler
         // Skip word chars
         while (pos < buf.Length && !char.IsWhiteSpace(buf[pos])) pos++;
         return pos;
+    }
+
+    // CSI sequence parsing results
+    private enum CsiResult { None, BracketPasteStart, BracketPasteEnd, MouseWheelUp, MouseWheelDown, AltUp, AltDown }
+
+    /// <summary>Try to parse a CSI escape sequence after Escape key was already read.</summary>
+    /// Handles:
+    /// - Bracket paste: ESC[200~ / ESC[201~
+    /// - Mouse wheel (SGR mode): ESC[<64;row;colM (up) / ESC[<65;row;colM (down)
+    /// - Alt+arrows: ESC[1;3A (up) / ESC[1;3B (down)
+    private static CsiResult TryParseCsiSequence()
+    {
+        if (!Console.KeyAvailable) return CsiResult.None;
+
+        var next = Console.ReadKey(true);
+        if (next.KeyChar != '[') return CsiResult.None;
+
+        // Read the sequence into a buffer
+        var seq = new StringBuilder();
+        seq.Append('[');
+
+        // Read until we hit a terminating character (~, M, A, B, C, D) or timeout
+        var timeout = DateTime.Now.AddMilliseconds(50);
+        while (DateTime.Now < timeout && Console.KeyAvailable)
+        {
+            var ch = Console.ReadKey(true);
+            seq.Append(ch.KeyChar);
+
+            // Check for terminators
+            if (ch.KeyChar == '~')
+            {
+                var seqStr = seq.ToString();
+                if (seqStr == "[200~") return CsiResult.BracketPasteStart;
+                if (seqStr == "[201~") return CsiResult.BracketPasteEnd;
+                return CsiResult.None;
+            }
+
+            // Mouse SGR mode: [<button;row;colM or m
+            if (ch.KeyChar == 'M' || ch.KeyChar == 'm')
+            {
+                var seqStr = seq.ToString();
+                // Wheel up = 64, wheel down = 65
+                if (seqStr.StartsWith("[<64;")) return CsiResult.MouseWheelUp;
+                if (seqStr.StartsWith("[<65;")) return CsiResult.MouseWheelDown;
+                return CsiResult.None;
+            }
+
+            // Arrow keys with modifiers: [1;3A (Alt+Up), [1;3B (Alt+Down)
+            if (ch.KeyChar == 'A')
+            {
+                if (seq.ToString() == "[1;3A") return CsiResult.AltUp;
+                return CsiResult.None;
+            }
+            if (ch.KeyChar == 'B')
+            {
+                if (seq.ToString() == "[1;3B") return CsiResult.AltDown;
+                return CsiResult.None;
+            }
+        }
+
+        return CsiResult.None;
     }
 }

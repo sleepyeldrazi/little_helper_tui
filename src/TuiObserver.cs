@@ -24,11 +24,17 @@ public class TuiObserver : IAgentObserver
     private readonly string _theme;              // "default", "monochrome", "dark"
     private readonly bool _verbose;              // show > pending calls and state transitions
 
+    // Scroll state - scroll by render action count (approximate lines)
+    private int _scrollOffset = 0;  // number of render actions to skip from end
+    private bool _hasNewContent = false;  // new content arrived while scrolled
+
     public int CurrentStep { get; private set; }
     public AgentState CurrentState { get; private set; } = AgentState.Planning;
     public int TotalTokens { get; private set; }
     public int TotalThinkingTokens { get; private set; }
     public bool IsPaused { get; set; }
+    public bool IsScrolled => _scrollOffset > 0;
+    public bool HasNewContent => _hasNewContent && _scrollOffset > 0;
 
     /// <summary>Current streaming content (for live display during spin loop).</summary>
     public string StreamingPreview
@@ -62,6 +68,8 @@ public class TuiObserver : IAgentObserver
         TotalThinkingTokens = 0;
         CurrentStep = 0;
         CurrentState = AgentState.Planning;
+        _scrollOffset = 0;
+        _hasNewContent = false;
         lock (_lock)
         {
             _renderQueue.Clear();
@@ -69,16 +77,60 @@ public class TuiObserver : IAgentObserver
         }
     }
 
+    /// <summary>Reset scroll to bottom.</summary>
+    public void ResetScroll()
+    {
+        _scrollOffset = 0;
+        _hasNewContent = false;
+    }
+
+    /// <summary>Scroll up by render actions.</summary>
+    public void ScrollUp(int actions = 3)
+    {
+        lock (_lock)
+        {
+            var maxScroll = Math.Max(0, _renderHistory.Count - 1);
+            _scrollOffset = Math.Min(_scrollOffset + actions, maxScroll);
+        }
+    }
+
+    /// <summary>Scroll down by render actions.</summary>
+    public void ScrollDown(int actions = 3)
+    {
+        lock (_lock)
+        {
+            _scrollOffset = Math.Max(_scrollOffset - actions, 0);
+            if (_scrollOffset == 0) _hasNewContent = false;
+        }
+    }
+
+    /// <summary>Mark that new content arrived while scrolled.</summary>
+    public void MarkNewContent()
+    {
+        if (_scrollOffset > 0) _hasNewContent = true;
+    }
+
     /// <summary>Drain and render all queued events to the console.</summary>
     public void Drain(IAnsiConsole console)
     {
         List<Action<IAnsiConsole>> batch;
+        bool wasScrolled;
         lock (_lock)
         {
             batch = new List<Action<IAnsiConsole>>(_renderQueue);
             _renderQueue.Clear();
+            wasScrolled = _scrollOffset > 0;
+            if (wasScrolled)
+            {
+                // Mark that new content arrived while scrolled
+                _hasNewContent = true;
+            }
             _renderHistory.AddRange(batch);
         }
+
+        // If scrolled, just add to history without rendering
+        if (wasScrolled)
+            return;
 
         foreach (var action in batch)
             action(console);
@@ -101,18 +153,27 @@ public class TuiObserver : IAgentObserver
     /// <summary>
     /// Clear screen and replay all rendered panels at the current terminal width.
     /// Called when terminal width changes (font size, window resize).
+    /// Respects scroll offset to show scrolled-back content.
     /// </summary>
     public void Redraw(IAnsiConsole console)
     {
         List<Action<IAnsiConsole>> snapshot;
+        int offset;
         lock (_lock)
         {
             snapshot = new List<Action<IAnsiConsole>>(_renderHistory);
+            offset = _scrollOffset;
         }
 
         Console.Clear();
-        foreach (var action in snapshot)
-            action(console);
+
+        // Calculate which actions to show based on scroll offset
+        var startIdx = Math.Max(0, snapshot.Count - offset);
+        for (int i = startIdx; i < snapshot.Count; i++)
+        {
+            snapshot[i](console);
+        }
+
         Console.Out.Flush();
     }
 
