@@ -12,10 +12,18 @@ class Program
     private static int _lastConsoleWidth = Console.WindowWidth;
 
     // Alternate screen buffer: preserves user's terminal history on exit
-    // ?1047h = switch to alt buffer (keeps scrollback), ?1049h = switch + clear
-    // We use 1047 so the alt buffer has scrollback, plus clear manually
-    private const string EnterAltBuffer = "\x1b[?1047h\x1b[H\x1b[2J";
-    private const string LeaveAltBuffer = "\x1b[?1047l";
+    // ?1047h = switch to alt buffer (keeps scrollback) — works on most modern terminals
+    // ?1049h = switch + clear — needed for Terminal.app which doesn't support scrollback in alt buffer
+    // Ghostty, iTerm2, Alacritty, WezTerm all support ?1047h properly
+    private static readonly bool IsMacTerminal = Environment.GetEnvironmentVariable("TERM_PROGRAM") == "Apple_Terminal";
+
+    private static string EnterAltBuffer => IsMacTerminal
+        ? "\x1b[?1049h"  // Terminal.app: no scrollback, but consistent behavior
+        : "\x1b[?1047h\x1b[H\x1b[2J";  // Modern terminals: scrollback supported
+
+    private static string LeaveAltBuffer => IsMacTerminal
+        ? "\x1b[?1049l"  // Terminal.app
+        : "\x1b[?1047l";  // Modern terminals
 
     private static void EnterAlternateScreen() => Console.Write(EnterAltBuffer);
     private static void LeaveAlternateScreen() => Console.Write(LeaveAltBuffer);
@@ -62,18 +70,18 @@ class Program
         {
             resolved = modelConfig.Resolve(defaultModel);
             if (resolved == null && !hasConfiguredProviders)
-                resolved = EndpointSetup.Run(console);
+                resolved = await EndpointSetup.RunAsync(console);
             else if (resolved == null)
-                resolved = ModelSelector.Select(console);
+                resolved = await ModelSelector.SelectAsync(console);
         }
         else if (!hasConfiguredProviders)
         {
             // First run with no providers — show setup menu
-            resolved = EndpointSetup.Run(console);
+            resolved = await EndpointSetup.RunAsync(console);
         }
         else
         {
-            resolved = ModelSelector.Select(console);
+            resolved = await ModelSelector.SelectAsync(console);
         }
         if (resolved == null)
         {
@@ -87,6 +95,12 @@ class Program
             .Color(Color.Blue));
         console.MarkupLine("[dim]Terminal UI v0.1.0[/]");
         console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim]({resolved.BaseUrl})[/]");
+
+        // Warn Terminal.app users about scrollback limitations
+        if (IsMacTerminal)
+        {
+            console.MarkupLine("[dim][yellow]Note:[/] Terminal.app has limited scrollback. Use iTerm2 or Ghostty for full scrollback.[/]");
+        }
         console.WriteLine();
 
         var workingDir = Directory.GetCurrentDirectory();
@@ -349,7 +363,7 @@ class Program
                 ResolvedModel? newResolved;
                 if (string.IsNullOrEmpty(arg))
                 {
-                    newResolved = ModelSelector.Select(console);
+                    newResolved = await ModelSelector.SelectAsync(console);
                 }
                 else
                 {
@@ -425,10 +439,10 @@ class Program
             case ":arena":
                 console.MarkupLine("[bold]Select two models for arena mode:[/]");
                 console.MarkupLine("[dim]Model 1:[/]");
-                var m1 = ModelSelector.Select(console);
+                var m1 = await ModelSelector.SelectAsync(console);
                 if (m1 == null) return new CmdHandleResult(CmdResult.Continue);
                 console.MarkupLine("[dim]Model 2:[/]");
-                var m2 = ModelSelector.Select(console);
+                var m2 = await ModelSelector.SelectAsync(console);
                 if (m2 == null) return new CmdHandleResult(CmdResult.Continue);
                 var arenaPrompt = console.Prompt(new TextPrompt<string>("[bold]Arena prompt:[/]"));
                 await ModelArena.RunArena(console, arenaPrompt, m1, m2, workingDir, _tuiConfig);

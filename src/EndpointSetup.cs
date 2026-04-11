@@ -45,7 +45,7 @@ public static class EndpointSetup
             "", 32768, Hint: "Enter any OpenAI-compatible endpoint"),
     };
 
-    public static ResolvedModel? Run(IAnsiConsole console)
+    public static async Task<ResolvedModel?> RunAsync(IAnsiConsole console)
     {
         console.WriteLine();
         console.MarkupLine("[bold blue]Welcome to little helper![/]");
@@ -63,19 +63,19 @@ public static class EndpointSetup
                 .AddChoices(items));
 
         if (selected == "Skip (enter manually)")
-            return ManualEntry(console);
+            return await ManualEntry(console);
 
         var template = Templates.First(t => t.DisplayName == selected);
 
         return template.Name switch
         {
-            "ollama" or "lm-studio" or "llama-cpp" => SetupLocal(console, template),
-            "custom" => SetupCustom(console),
-            _ => SetupCloud(console, template)
+            "ollama" or "lm-studio" or "llama-cpp" => await SetupLocal(console, template),
+            "custom" => await SetupCustom(console),
+            _ => await SetupCloud(console, template)
         };
     }
 
-    private static ResolvedModel SetupLocal(IAnsiConsole console, ProviderTemplate template)
+    private static async Task<ResolvedModel> SetupLocal(IAnsiConsole console, ProviderTemplate template)
     {
         if (template.Hint != null)
         {
@@ -95,16 +95,19 @@ public static class EndpointSetup
                 .AllowEmpty());
         if (string.IsNullOrWhiteSpace(model)) model = template.DefaultModel;
 
-        var config = BuildConfig(template, url, apiKey: null);
+        // Auto-detect context window from endpoint
+        var contextWindow = await DetectContextWindowAsync(console, url.TrimEnd('/'), model, apiKey: null);
+
+        var config = BuildConfig(template, url, apiKey: null, contextWindow);
         config.Save();
         console.MarkupLine($"[green]Saved to ~/.little_helper/models.json[/]");
 
         return new ResolvedModel(
-            url.TrimEnd('/'), model, "", template.ContextWindow, 0.3,
+            url.TrimEnd('/'), model, "", contextWindow, 0.3,
             template.ApiType, template.Headers, template.AuthType);
     }
 
-    private static ResolvedModel SetupCloud(IAnsiConsole console, ProviderTemplate template)
+    private static async Task<ResolvedModel> SetupCloud(IAnsiConsole console, ProviderTemplate template)
     {
         console.MarkupLine($"[dim]Drop your {template.DisplayName.Split('(')[0].Trim()} API key:[/]");
         var apiKey = console.Prompt(
@@ -128,16 +131,20 @@ public static class EndpointSetup
         if (template.Name == "kimi")
             url = "https://api.kimi.com/coding"; // Kimi coding endpoint
 
-        var config = BuildConfig(template, url, apiKey);
+        // Auto-detect context window (or use template default if detection fails)
+        var contextWindow = await DetectContextWindowAsync(console, url.TrimEnd('/'), model,
+            string.IsNullOrEmpty(apiKey) ? null : apiKey, template.ContextWindow);
+
+        var config = BuildConfig(template, url, apiKey, contextWindow);
         config.Save();
         console.MarkupLine($"[green]Saved to ~/.little_helper/models.json[/]");
 
         return new ResolvedModel(
-            url.TrimEnd('/'), model, apiKey, template.ContextWindow, 0.3,
+            url.TrimEnd('/'), model, apiKey, contextWindow, 0.3,
             template.ApiType, template.Headers, template.AuthType);
     }
 
-    private static ResolvedModel SetupCustom(IAnsiConsole console)
+    private static async Task<ResolvedModel> SetupCustom(IAnsiConsole console)
     {
         var url = console.Prompt(
             new TextPrompt<string>("[bold]Endpoint URL:[/]")
@@ -149,13 +156,17 @@ public static class EndpointSetup
             new TextPrompt<string>("[bold]API key[/] [dim](leave empty for none)[/]:")
                 .AllowEmpty());
 
+        // Auto-detect context window from endpoint
+        var contextWindow = await DetectContextWindowAsync(console, url.TrimEnd('/'), model,
+            string.IsNullOrEmpty(apiKey) ? null : apiKey);
+
         // Just return, don't save a template for custom
         return new ResolvedModel(
             url.TrimEnd('/'), model, string.IsNullOrEmpty(apiKey) ? "" : apiKey,
-            32768, 0.3);
+            contextWindow, 0.3);
     }
 
-    private static ResolvedModel? ManualEntry(IAnsiConsole console)
+    private static async Task<ResolvedModel?> ManualEntry(IAnsiConsole console)
     {
         // Original manual prompt flow
         var endpoint = console.Prompt(
@@ -172,14 +183,18 @@ public static class EndpointSetup
             new TextPrompt<string>("[bold]API key[/] [dim](leave empty for none)[/]:")
                 .AllowEmpty());
 
+        // Auto-detect context window from endpoint
+        var contextWindow = await DetectContextWindowAsync(console, endpoint.TrimEnd('/'), model,
+            string.IsNullOrEmpty(apiKey) ? null : apiKey);
+
         return new ResolvedModel(
             endpoint.TrimEnd('/'), model,
             string.IsNullOrEmpty(apiKey) ? "" : apiKey,
-            32768, 0.3);
+            contextWindow, 0.3);
     }
 
     /// <summary>Build a ModelConfig with the selected provider template.</summary>
-    private static ModelConfig BuildConfig(ProviderTemplate template, string url, string? apiKey)
+    private static ModelConfig BuildConfig(ProviderTemplate template, string url, string? apiKey, int contextWindow)
     {
         var config = ModelConfig.Load();
 
@@ -190,19 +205,45 @@ public static class EndpointSetup
             ApiType = template.ApiType,
             AuthType = template.AuthType,
             Headers = template.Headers,
-            DefaultContextWindow = template.ContextWindow,
+            DefaultContextWindow = contextWindow,
             Models = new List<ModelEntry>
             {
                 new()
                 {
                     Id = template.DefaultModel,
                     Name = template.DisplayName.Split('(')[0].Trim(),
-                    ContextWindow = template.ContextWindow
+                    ContextWindow = contextWindow
                 }
             }
         };
         config.DefaultModel = template.DefaultModel;
 
         return config;
+    }
+
+    /// <summary>
+    /// Auto-detect context window from endpoint. Falls back to provided default or 32k.
+    /// </summary>
+    private static async Task<int> DetectContextWindowAsync(IAnsiConsole console, string endpoint, string model, string? apiKey, int fallback = 32768)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var client = new ModelClient(endpoint.TrimEnd('/'), model, 0.3,
+                string.IsNullOrEmpty(apiKey) ? null : apiKey);
+            var detected = await client.QueryContextWindow(cts.Token);
+            if (detected.HasValue && detected.Value > 0)
+            {
+                console.MarkupLine($"[dim]Detected context window: {detected.Value / 1024}K tokens[/]");
+                return detected.Value;
+            }
+        }
+        catch
+        {
+            // Detection failed, use fallback
+        }
+
+        console.MarkupLine($"[dim]Using default context window: {fallback / 1024}K tokens[/]");
+        return fallback;
     }
 }

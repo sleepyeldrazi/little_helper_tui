@@ -10,14 +10,14 @@ namespace LittleHelperTui;
 /// </summary>
 public static class ModelSelector
 {
-    public static ResolvedModel? Select(IAnsiConsole console)
+    public static async Task<ResolvedModel?> SelectAsync(IAnsiConsole console)
     {
         var config = ModelConfig.Load();
         var models = config.GetAllModels();
 
         if (models.Count == 0)
         {
-            return PromptManual(console);
+            return await PromptManual(console);
         }
 
         // Separate into configured (has API key or localhost) and unconfigured
@@ -68,7 +68,7 @@ public static class ModelSelector
         );
 
         if (string.IsNullOrEmpty(selected.ModelId))
-            return PromptManual(console);
+            return await PromptManual(console);
 
         // Resolve through config to get full details (api key, etc.)
         var resolved = config.Resolve(selected.ModelId);
@@ -78,10 +78,10 @@ public static class ModelSelector
             return resolved;
         }
 
-        return PromptManual(console);
+        return await PromptManual(console);
     }
 
-    private static ResolvedModel? PromptManual(IAnsiConsole console)
+    private static async Task<ResolvedModel?> PromptManual(IAnsiConsole console)
     {
         var endpoint = console.Prompt(
             new TextPrompt<string>("[bold]Endpoint URL:[/]")
@@ -99,12 +99,50 @@ public static class ModelSelector
             new TextPrompt<string>("[bold]API key[/] [dim](leave empty for none)[/]:")
                 .AllowEmpty());
 
+        // Context window priority: 1) models.json 2) auto-detect 3) 32k fallback
+        var contextWindow = await ResolveContextWindowAsync(console, endpoint, model, apiKey);
+
         return new ResolvedModel(
-            endpoint.TrimEnd('/'),
-            model,
+            endpoint.TrimEnd('/'), model,
             string.IsNullOrEmpty(apiKey) ? "" : apiKey,
-            32768,
-            0.3);
+            contextWindow, 0.3);
+    }
+
+    /// <summary>
+    /// Resolve context window with priority:
+    /// 1. Check models.json if model is listed there
+    /// 2. Auto-detect via endpoint query
+    /// 3. Fall back to 32k
+    /// </summary>
+    private static async Task<int> ResolveContextWindowAsync(IAnsiConsole console, string endpoint, string model, string? apiKey)
+    {
+        // Priority 1: Check models.json
+        var config = ModelConfig.Load();
+        var resolvedFromConfig = config.Resolve(model);
+        if (resolvedFromConfig != null && resolvedFromConfig.ContextWindow > 0)
+        {
+            return resolvedFromConfig.ContextWindow;
+        }
+
+        // Priority 2: Auto-detect from endpoint
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var client = new ModelClient(endpoint.TrimEnd('/'), model, 0.3,
+                string.IsNullOrEmpty(apiKey) ? null : apiKey);
+            var detected = await client.QueryContextWindow(cts.Token);
+            if (detected.HasValue && detected.Value > 0)
+            {
+                return detected.Value;
+            }
+        }
+        catch
+        {
+            // Detection failed, fall through to default
+        }
+
+        // Priority 3: Default fallback
+        return 32768;
     }
 
     private record SelectionItem(
