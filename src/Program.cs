@@ -12,15 +12,21 @@ class Program
         var yoloMode = args.Contains("--yolo") || args.Contains("-y");
         var config = TuiConfig.Load();
 
-        Application.Init();
+        // Ensure truecolor is available (Terminal.Gui may not recognize xterm-ghostty etc.)
+        var colorTerm = Environment.GetEnvironmentVariable("COLORTERM") ?? "";
+        if (string.IsNullOrEmpty(colorTerm))
+            Environment.SetEnvironmentVariable("COLORTERM", "truecolor");
 
-        // Set dark color scheme globally
-        if (Colors.ColorSchemes.TryGetValue("Toplevel", out var topScheme))
-            Colors.ColorSchemes["Toplevel"] = DarkColors.Base;
-        if (Colors.ColorSchemes.TryGetValue("Base", out var baseScheme))
-            Colors.ColorSchemes["Base"] = DarkColors.Base;
-        if (Colors.ColorSchemes.TryGetValue("Dialog", out var dlgScheme))
-            Colors.ColorSchemes["Dialog"] = DarkColors.Dialog;
+        Application.Init();
+        Application.Force16Colors = false;
+
+        // Set dark color scheme globally for all built-in widget types
+        var dark = DarkColors.Base;
+        var dialog = DarkColors.Dialog;
+        foreach (var key in Colors.ColorSchemes.Keys.ToList())
+        {
+            Colors.ColorSchemes[key] = key == "Dialog" ? dialog : dark;
+        }
 
         try
         {
