@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using LittleHelper;
 using LittleHelperTui.Dialogs;
 using LittleHelperTui.Views;
@@ -10,46 +9,34 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        // Parse --yolo flag
         var yoloMode = args.Contains("--yolo") || args.Contains("-y");
-
-        // Load config
         var config = TuiConfig.Load();
 
-        // Initialize Terminal.Gui
         Application.Init();
 
         try
         {
-            // Resolve model: respect defaults from tui.json and models.json,
-            // only show picker if no default is configured or resolution fails
+            // Resolve model — matches old startup flow exactly:
+            // 1. Check tui.json default_model, then models.json default_model
+            // 2. If no providers configured → manual entry
+            // 3. Otherwise → provider selection picker
             var modelConfig = ModelConfig.Load();
             var hasConfiguredProviders = modelConfig.Providers.Count > 0;
+            var defaultModel = config.DefaultModel ?? modelConfig.DefaultModel;
 
             ResolvedModel? resolved = null;
-            var defaultModel = config.DefaultModel ?? modelConfig.DefaultModel;
 
             if (!string.IsNullOrEmpty(defaultModel))
             {
                 resolved = modelConfig.Resolve(defaultModel);
-                // If default didn't resolve and no providers, show manual entry
                 if (resolved == null && !hasConfiguredProviders)
-                {
-                    var manualDialog = new ManualModelDialog();
-                    Application.Run(manualDialog);
-                    resolved = manualDialog.Result;
-                }
+                    resolved = ShowManualEntry();
                 else if (resolved == null)
-                {
                     resolved = ShowModelSelection();
-                }
             }
             else if (!hasConfiguredProviders)
             {
-                // First run with no providers — go straight to manual entry
-                var manualDialog = new ManualModelDialog();
-                Application.Run(manualDialog);
-                resolved = manualDialog.Result;
+                resolved = ShowManualEntry();
             }
             else
             {
@@ -68,12 +55,13 @@ class Program
             controller.SetMainWindow(mainWindow);
             controller.SetModel(resolved);
 
-            // Show welcome banner
-            ShowWelcomeBanner(mainWindow, resolved);
+            // Show welcome banner (plain text, like old FigletText + info)
+            mainWindow.AppendLine("little helper");
+            mainWindow.AppendLine($"Using {resolved.ModelId} ({resolved.BaseUrl})");
+            mainWindow.AppendLine("Hint: use :help for the command list");
+            mainWindow.AppendLine();
 
-            // Run the application
             Application.Run(mainWindow);
-
             return 0;
         }
         finally
@@ -82,52 +70,30 @@ class Program
         }
     }
 
+    /// <summary>Show provider/model picker dialog. Returns to manual entry if requested.</summary>
     private static ResolvedModel? ShowModelSelection()
     {
         while (true)
         {
             var dialog = new ModelSelectionDialog();
-            
-            // Run the dialog - this blocks until dialog closes
             Application.Run(dialog);
-            
-            // Check if user wants manual entry
+
             if (dialog.ShowManualEntry)
             {
-                // Show manual entry dialog
-                var manualDialog = new ManualModelDialog();
-                Application.Run(manualDialog);
-                
-                if (manualDialog.Result != null)
-                {
-                    return manualDialog.Result;
-                }
-                // If manual dialog was cancelled, loop back to selection
-                continue;
+                var result = ShowManualEntry();
+                if (result != null) return result;
+                continue; // back to picker if manual was cancelled
             }
-            
-            // User selected a model or cancelled
+
             return dialog.SelectedModel;
         }
     }
 
-    private static void ShowWelcomeBanner(MainWindow window, ResolvedModel model)
+    /// <summary>Show manual endpoint/model/apikey entry dialog.</summary>
+    private static ResolvedModel? ShowManualEntry()
     {
-        var banner = new Label
-        {
-            X = 1,
-            Y = 0,
-            Width = Dim.Fill(),
-            Height = 3,
-            Text = $@"little helper v0.2.0
-Using {model.ModelId} ({model.BaseUrl})
-Hint: use :help for the command list"
-        };
-
-        // Add banner as first child of chat content
-        if (window.ChatContent.Subviews.Count == 0)
-        {
-            window.ChatContent.Add(banner);
-        }
+        var dialog = new ManualModelDialog();
+        Application.Run(dialog);
+        return dialog.Result;
     }
 }

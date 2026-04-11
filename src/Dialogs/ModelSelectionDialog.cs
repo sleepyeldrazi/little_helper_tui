@@ -6,38 +6,32 @@ namespace LittleHelperTui.Dialogs;
 
 /// <summary>
 /// Dialog for selecting a model from configured providers.
+/// Matches old ModelSelector: configured providers on top, unconfigured below,
+/// manual entry at bottom.
 /// </summary>
 public class ModelSelectionDialog : Dialog
 {
     public ResolvedModel? SelectedModel { get; private set; }
     public bool ShowManualEntry { get; private set; }
 
-    private ListView _listView;
-    private List<SelectionItem> _items = new();
+    private readonly ListView _listView;
+    private readonly List<SelectionItem> _items = new();
 
     public ModelSelectionDialog()
     {
-        Title = "Select Model";
+        Title = "Select a model";
         Width = Dim.Percent(60);
         Height = Dim.Percent(70);
 
-        // Title label
-        var titleLabel = new Label
-        {
-            X = 1,
-            Y = 1,
-            Text = "Select a model:"
-        };
-
-        // Load models
         LoadModels();
 
-        // List view - use source with the item strings
-        var listItems = new System.Collections.ObjectModel.ObservableCollection<string>(_items.Select(i => i.DisplayText));
+        var listItems = new System.Collections.ObjectModel.ObservableCollection<string>(
+            _items.Select(i => i.DisplayText));
+
         _listView = new ListView
         {
             X = 1,
-            Y = 3,
+            Y = 1,
             Width = Dim.Fill(2),
             Height = Dim.Fill(4),
             Source = new ListWrapper<string>(listItems)
@@ -45,22 +39,11 @@ public class ModelSelectionDialog : Dialog
 
         _listView.OpenSelectedItem += (s, e) => SelectItem(e.Item);
 
-        // Buttons - Dialog has AddButton method
-        var selectButton = new Button { Title = "Select" };
+        var selectButton = new Button { Title = "Select", IsDefault = true };
         selectButton.Accept += (s, e) =>
         {
             if (_listView.SelectedItem >= 0 && _listView.SelectedItem < _items.Count)
-            {
                 SelectItem(_listView.SelectedItem);
-            }
-            if (e is HandledEventArgs he) he.Handled = true;
-        };
-
-        var manualButton = new Button { Title = "Manual" };
-        manualButton.Accept += (s, e) =>
-        {
-            ShowManualEntry = true;
-            Application.RequestStop(this);
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
@@ -74,10 +57,8 @@ public class ModelSelectionDialog : Dialog
         };
 
         AddButton(selectButton);
-        AddButton(manualButton);
         AddButton(cancelButton);
-
-        Add(titleLabel, _listView);
+        Add(_listView);
     }
 
     private void LoadModels()
@@ -102,30 +83,26 @@ public class ModelSelectionDialog : Dialog
                 unconfigured.Add(item);
         }
 
-        // Add configured first (local models at top)
         _items.AddRange(configured);
 
-        // Separator for unconfigured
         if (unconfigured.Count > 0)
         {
-            _items.Add(new SelectionItem("-- no API key --", "", "", 0, "", isSeparator: true));
+            _items.Add(new SelectionItem("────────────────", "", "", 0, "", isSeparator: true));
             _items.AddRange(unconfigured);
         }
 
-        // Manual entry option
         _items.Add(new SelectionItem("Other (enter manually)", "", "", 0, ""));
     }
 
     private void SelectItem(int index)
     {
+        if (index < 0 || index >= _items.Count) return;
         var item = _items[index];
 
-        if (item.IsSeparator)
-            return;
+        if (item.IsSeparator) return;
 
         if (string.IsNullOrEmpty(item.ModelId))
         {
-            // Manual entry selected from list
             ShowManualEntry = true;
             Application.RequestStop(this);
             return;
@@ -150,9 +127,9 @@ public class ModelSelectionDialog : Dialog
             ? DisplayName
             : string.IsNullOrEmpty(ModelId)
                 ? DisplayName
-                : $"{DisplayName} ({Provider}, {ContextWindowK}K)";
+                : $"{DisplayName}  ({Provider}, {ContextWindowK}K context)";
 
-        public string ContextWindowK => ContextWindow > 0 ? (ContextWindow / 1024).ToString() : "?";
+        private string ContextWindowK => ContextWindow > 0 ? (ContextWindow / 1024).ToString() : "?";
 
         public SelectionItem(string displayName, string provider, string modelId,
             int contextWindow, string apiType, bool isSeparator = false)
@@ -169,14 +146,15 @@ public class ModelSelectionDialog : Dialog
 
 /// <summary>
 /// Dialog for manually entering model details.
+/// Matches old ModelSelector.PromptManual: endpoint, model name, API key.
 /// </summary>
 public class ManualModelDialog : Dialog
 {
     public ResolvedModel? Result { get; private set; }
 
-    private TextField _endpointField;
-    private TextField _modelField;
-    private TextField _apiKeyField;
+    private readonly TextField _endpointField;
+    private readonly TextField _modelField;
+    private readonly TextField _apiKeyField;
 
     public ManualModelDialog()
     {
@@ -184,55 +162,27 @@ public class ManualModelDialog : Dialog
         Width = Dim.Percent(60);
         Height = 14;
 
-        // Endpoint
-        var endpointLabel = new Label
-        {
-            X = 1,
-            Y = 1,
-            Text = "Endpoint URL:"
-        };
-
+        var endpointLabel = new Label { X = 1, Y = 1, Text = "Endpoint URL:" };
         _endpointField = new TextField
         {
-            X = 1,
-            Y = 2,
-            Width = Dim.Fill(2),
+            X = 1, Y = 2, Width = Dim.Fill(2),
             Text = "http://localhost:11434/v1"
         };
 
-        // Model
-        var modelLabel = new Label
-        {
-            X = 1,
-            Y = 4,
-            Text = "Model name:"
-        };
-
+        var modelLabel = new Label { X = 1, Y = 4, Text = "Model name:" };
         _modelField = new TextField
         {
-            X = 1,
-            Y = 5,
-            Width = Dim.Fill(2),
+            X = 1, Y = 5, Width = Dim.Fill(2),
             Text = "qwen3:14b"
         };
 
-        // API Key
-        var apiKeyLabel = new Label
-        {
-            X = 1,
-            Y = 7,
-            Text = "API key (optional):"
-        };
-
+        var apiKeyLabel = new Label { X = 1, Y = 7, Text = "API key (leave empty for none):" };
         _apiKeyField = new TextField
         {
-            X = 1,
-            Y = 8,
-            Width = Dim.Fill(2),
+            X = 1, Y = 8, Width = Dim.Fill(2),
             Text = ""
         };
 
-        // Buttons
         var okButton = new Button { Title = "OK", IsDefault = true };
         okButton.Accept += (s, e) =>
         {
@@ -251,7 +201,6 @@ public class ManualModelDialog : Dialog
 
         AddButton(okButton);
         AddButton(cancelButton);
-
         Add(endpointLabel, _endpointField, modelLabel, _modelField,
             apiKeyLabel, _apiKeyField);
     }
@@ -264,15 +213,11 @@ public class ManualModelDialog : Dialog
 
         if (string.IsNullOrEmpty(endpoint))
             endpoint = "http://localhost:11434/v1";
-
         if (string.IsNullOrEmpty(model))
             model = "qwen3:14b";
 
         Result = new ResolvedModel(
-            endpoint.TrimEnd('/'),
-            model,
-            apiKey,
-            32768, // Default context window
-            0.3);
+            endpoint.TrimEnd('/'), model,
+            apiKey, 32768, 0.3);
     }
 }

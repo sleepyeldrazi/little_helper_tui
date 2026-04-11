@@ -1,19 +1,20 @@
 using System.ComponentModel;
+using System.Text;
 using Terminal.Gui;
-using LittleHelperTui.Observers;
 
 namespace LittleHelperTui.Views;
 
 /// <summary>
-/// Main application window containing chat scroll view, input field, and status bar.
+/// Main application window. Chat output is a scrollable TextView (read-only).
+/// Input is a TextField at the bottom. Status bar shows model/step info.
 /// </summary>
 public class MainWindow : Window
 {
-    private ScrollView _scrollView = null!;
-    private View _chatContent = null!;
-    private TextField _inputField = null!;
-    private Label _statusLabel = null!;
-    private TuiController _controller;
+    private readonly TextView _chatView;
+    private readonly TextField _inputField;
+    private readonly Label _statusLabel;
+    private readonly TuiController _controller;
+    private readonly StringBuilder _chatBuffer = new();
     private bool _autoScroll = true;
 
     // Input history
@@ -21,48 +22,28 @@ public class MainWindow : Window
     private int _historyIndex = -1;
     private string _savedDraft = "";
 
-    public View ChatContent => _chatContent;
     public TextField InputField => _inputField;
-    public TerminalGuiObserver? Observer { get; set; }
 
     public MainWindow(TuiController controller)
     {
         _controller = controller;
         Title = "little helper";
-
-        // Setup layout
-        SetupLayout();
-
-        // Set initial focus
-        _inputField.SetFocus();
-    }
-
-    private void SetupLayout()
-    {
-        // Main window fills the screen
         X = 0;
         Y = 0;
         Width = Dim.Fill();
         Height = Dim.Fill();
 
-        // Inner content view that grows as messages are added
-        _chatContent = new View
+        // Chat output: read-only text view filling most of the window
+        _chatView = new TextView
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Auto()
+            Height = Dim.Fill(2), // leave room for input + status
+            ReadOnly = true,
+            WordWrap = true,
+            Text = ""
         };
-
-        // ScrollView wrapping the content
-        _scrollView = new ScrollView
-        {
-            X = 0,
-            Y = 0,
-            Width = Dim.Fill(),
-            Height = Dim.Fill() - 2 // Leave room for input + status
-        };
-        _scrollView.Add(_chatContent);
 
         // Input field at bottom
         _inputField = new TextField
@@ -70,7 +51,8 @@ public class MainWindow : Window
             X = 0,
             Y = Pos.AnchorEnd(2),
             Width = Dim.Fill(),
-            Height = 1
+            Height = 1,
+            Text = ""
         };
 
         // Status bar at very bottom
@@ -83,48 +65,93 @@ public class MainWindow : Window
             Text = "Ready"
         };
 
-        Add(_scrollView, _inputField, _statusLabel);
+        Add(_chatView, _inputField, _statusLabel);
 
         // Wire up events
         _inputField.Accept += OnInputAccepting;
 
-        // Input history key bindings
+        // Input history and scroll key bindings
         _inputField.KeyDown += (s, e) =>
         {
-            if (e.KeyCode == KeyCode.CursorUp)
+            switch (e.KeyCode)
             {
-                NavigateHistory(-1);
-                e.Handled = true;
-            }
-            else if (e.KeyCode == KeyCode.CursorDown)
-            {
-                NavigateHistory(1);
-                e.Handled = true;
-            }
-            else if (e.KeyCode == KeyCode.PageUp)
-            {
-                ScrollChat(-10);
-                e.Handled = true;
-            }
-            else if (e.KeyCode == KeyCode.PageDown)
-            {
-                ScrollChat(10);
-                e.Handled = true;
+                case KeyCode.CursorUp:
+                    NavigateHistory(-1);
+                    e.Handled = true;
+                    break;
+                case KeyCode.CursorDown:
+                    NavigateHistory(1);
+                    e.Handled = true;
+                    break;
+                case KeyCode.PageUp:
+                    ScrollChat(-10);
+                    e.Handled = true;
+                    break;
+                case KeyCode.PageDown:
+                    ScrollChat(10);
+                    e.Handled = true;
+                    break;
             }
         };
+
+        _inputField.SetFocus();
     }
 
-    /// <summary>
-    /// Set the status bar text.
-    /// </summary>
+    /// <summary>Set the status bar text.</summary>
     public void SetStatus(string text)
     {
-        _statusLabel.Text = text;
+        Application.Invoke(() => { _statusLabel.Text = text; });
     }
 
     /// <summary>
-    /// Handle input field accepting (Enter key).
+    /// Append text to the chat output. This is the primary rendering method.
+    /// All message formatting happens in the observer/controller — this just appends raw text.
     /// </summary>
+    public void AppendText(string text)
+    {
+        Application.Invoke(() =>
+        {
+            _chatBuffer.Append(text);
+            _chatView.Text = _chatBuffer.ToString();
+
+            if (_autoScroll)
+            {
+                // Move cursor to end to auto-scroll
+                _chatView.MoveEnd();
+            }
+        });
+    }
+
+    /// <summary>Append a line of text (adds newline).</summary>
+    public void AppendLine(string text = "")
+    {
+        AppendText(text + "\n");
+    }
+
+    /// <summary>Clear all chat output.</summary>
+    public void ClearChat()
+    {
+        Application.Invoke(() =>
+        {
+            _chatBuffer.Clear();
+            _chatView.Text = "";
+            _autoScroll = true;
+        });
+    }
+
+    private void ScrollChat(int delta)
+    {
+        // Positive delta = down, negative = up
+        var row = _chatView.TopRow + delta;
+        if (row < 0) row = 0;
+        _chatView.TopRow = row;
+
+        // Disable auto-scroll if user scrolled up
+        var totalLines = _chatBuffer.ToString().Split('\n').Length;
+        var viewHeight = _chatView.Frame.Height;
+        _autoScroll = row >= totalLines - viewHeight - 2;
+    }
+
     private void OnInputAccepting(object? sender, EventArgs e)
     {
         var text = _inputField.Text?.Trim() ?? "";
@@ -141,25 +168,17 @@ public class MainWindow : Window
 
         // Handle command or prompt
         if (text.StartsWith(":"))
-        {
             _controller.ExecuteCommand(text);
-        }
         else
-        {
             _controller.SubmitPrompt(text);
-        }
-        
-        // Mark as handled
+
         if (e is HandledEventArgs handled)
-        {
             handled.Handled = true;
-        }
     }
 
     private void NavigateHistory(int direction)
     {
-        if (_history.Count == 0)
-            return;
+        if (_history.Count == 0) return;
 
         if (direction < 0) // Up (older)
         {
@@ -190,66 +209,5 @@ public class MainWindow : Window
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Add a view to the chat content and auto-scroll to bottom.
-    /// </summary>
-    public void AddChatView(View view)
-    {
-        view.X = 0;
-        view.Y = _chatContent.Subviews.Count > 0
-            ? Pos.Bottom(_chatContent.Subviews[^1])
-            : 0;
-
-        _chatContent.Add(view);
-
-        // Auto-scroll to bottom if user hasn't scrolled up
-        if (_autoScroll)
-        {
-            ScrollToBottom();
-        }
-    }
-
-    /// <summary>
-    /// Clear all chat content.
-    /// </summary>
-    public void ClearChat()
-    {
-        foreach (var child in _chatContent.Subviews.ToList())
-        {
-            _chatContent.Remove(child);
-        }
-        _autoScroll = true;
-    }
-
-    /// <summary>Scroll chat by delta lines (negative = up, positive = down).</summary>
-    private void ScrollChat(int delta)
-    {
-        var newOffset = _scrollView.ContentOffset with
-        {
-            Y = _scrollView.ContentOffset.Y - delta
-        };
-        _scrollView.ContentOffset = newOffset;
-
-        // If user scrolled up, disable auto-scroll; if at bottom, re-enable
-        _autoScroll = IsAtBottom();
-    }
-
-    /// <summary>Scroll to the bottom of the chat content.</summary>
-    public void ScrollToBottom()
-    {
-        Application.Invoke(() =>
-        {
-            _scrollView.ScrollDown(_scrollView.GetContentSize().Height);
-        });
-    }
-
-    private bool IsAtBottom()
-    {
-        var contentHeight = _scrollView.GetContentSize().Height;
-        var viewportHeight = _scrollView.Frame.Height;
-        var offset = -_scrollView.ContentOffset.Y;
-        return offset >= contentHeight - viewportHeight - 2;
     }
 }
