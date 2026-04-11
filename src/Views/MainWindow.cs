@@ -5,41 +5,41 @@ using Attribute = Terminal.Gui.Attribute;
 namespace LittleHelperTui.Views;
 
 /// <summary>
-/// Color schemes: dark background (R:21 G:24 B:28), softer palette matching old Spectre TUI.
+/// Color schemes: use terminal's default background (no explicit bg color).
+/// Foreground colors are RGB for consistent accent colors.
 /// </summary>
 public static class DarkColors
 {
-    // Background color: R:21 G:24 B:28 (dark grayish)
-    public static readonly Color Bg = new(21, 24, 28);
-
-    public static readonly ColorScheme Base = MakeScheme(Color.Gray, Bg);
-    public static readonly ColorScheme UserBorder = MakeScheme(Color.Green, Bg);
-    public static readonly ColorScheme AssistantBorder = MakeScheme(new Color(159, 156, 236), Bg);
-    public static readonly ColorScheme ThinkingBorder = MakeScheme(Color.DarkGray, Bg);
-    public static readonly ColorScheme Content = MakeScheme(Color.White, Bg);
-    public static readonly ColorScheme ToolOk = MakeScheme(Color.Green, Bg);
-    public static readonly ColorScheme ToolErr = MakeScheme(Color.Red, Bg);
-    public static readonly ColorScheme Dim = MakeScheme(Color.DarkGray, Bg);
-    public static readonly ColorScheme Warning = MakeScheme(new Color(180, 180, 180), Bg);
-    public static readonly ColorScheme Bright = MakeScheme(Color.White, Bg);
-    public static readonly ColorScheme Error = MakeScheme(Color.Red, Bg);
-    public static readonly ColorScheme Bold = MakeScheme(Color.White, Bg);
-    public static readonly ColorScheme Teal = MakeScheme(new Color(100, 200, 180), Bg);
+    // Don't set background - let terminal use its native color
+    public static readonly ColorScheme Base = MakeScheme(Color.Gray);
+    public static readonly ColorScheme UserBorder = MakeScheme(Color.Green);
+    public static readonly ColorScheme AssistantBorder = MakeScheme(new Color(159, 156, 236));
+    public static readonly ColorScheme ThinkingBorder = MakeScheme(Color.DarkGray);
+    public static readonly ColorScheme Content = MakeScheme(Color.White);
+    public static readonly ColorScheme ToolOk = MakeScheme(Color.Green);
+    public static readonly ColorScheme ToolErr = MakeScheme(Color.Red);
+    public static readonly ColorScheme Dim = MakeScheme(Color.DarkGray);
+    public static readonly ColorScheme Warning = MakeScheme(new Color(180, 180, 180));
+    public static readonly ColorScheme Bright = MakeScheme(Color.White);
+    public static readonly ColorScheme Error = MakeScheme(Color.Red);
+    public static readonly ColorScheme Bold = MakeScheme(Color.White);
+    public static readonly ColorScheme Teal = MakeScheme(new Color(100, 200, 180));
 
     public static readonly ColorScheme Dialog = new()
     {
-        Normal = new Attribute(Color.Gray, new Color(40, 44, 52)),
-        Focus = new Attribute(Color.White, new Color(55, 60, 72)),
-        HotNormal = new Attribute(Color.White, new Color(40, 44, 52)),
-        HotFocus = new Attribute(Color.White, new Color(55, 60, 72))
+        Normal = new Attribute(Color.Gray, Color.Black),
+        Focus = new Attribute(Color.White, Color.Black),
+        HotNormal = new Attribute(Color.White, Color.Black),
+        HotFocus = new Attribute(Color.White, Color.Black)
     };
 
-    private static ColorScheme MakeScheme(Color fg, Color bg) => new()
+    // Create scheme with foreground color only - background uses terminal default
+    private static ColorScheme MakeScheme(Color fg) => new()
     {
-        Normal = new Attribute(fg, bg),
-        Focus = new Attribute(fg, bg),
-        HotNormal = new Attribute(fg, bg),
-        HotFocus = new Attribute(fg, bg)
+        Normal = new Attribute(fg, Color.Black),
+        Focus = new Attribute(fg, Color.Black),
+        HotNormal = new Attribute(fg, Color.Black),
+        HotFocus = new Attribute(fg, Color.Black)
     };
 }
 
@@ -163,6 +163,7 @@ public class MainWindow : Window
                 case KeyCode.CursorDown: NavigateHistory(1); e.Handled = true; break;
                 case KeyCode.PageUp: ScrollChat(-10); e.Handled = true; break;
                 case KeyCode.PageDown: ScrollChat(10); e.Handled = true; break;
+                case KeyCode.Tab: CompletePath(); e.Handled = true; break;
                 case KeyCode.C when e.IsCtrl: _controller.Cancel(); e.Handled = true; break;
             }
         };
@@ -330,5 +331,117 @@ public class MainWindow : Window
                 }
             }
         }
+    }
+
+    /// <summary>Path completion on Tab - completes partial paths using filesystem.</summary>
+    private void CompletePath()
+    {
+        var text = _inputField.Text ?? "";
+        if (string.IsNullOrEmpty(text)) return;
+
+        // Find the partial path at cursor position
+        var cursorPos = _inputField.CursorPosition;
+        var beforeCursor = text[..Math.Min(cursorPos, text.Length)];
+        
+        // Find the start of the current word (path)
+        var wordStart = beforeCursor.Length - 1;
+        while (wordStart >= 0 && !char.IsWhiteSpace(beforeCursor[wordStart]))
+            wordStart--;
+        wordStart++;
+        
+        var partial = beforeCursor[wordStart..];
+        if (string.IsNullOrEmpty(partial)) return;
+
+        try
+        {
+            // Determine directory and pattern
+            string dir, pattern;
+            if (partial.EndsWith('/'))
+            {
+                dir = partial;
+                pattern = "*";
+            }
+            else
+            {
+                dir = Path.GetDirectoryName(partial) ?? ".";
+                pattern = Path.GetFileName(partial) + "*";
+                if (dir == "") dir = ".";
+            }
+
+            // Expand ~ to home directory
+            if (dir.StartsWith("~"))
+            {
+                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                dir = home + dir[1..];
+            }
+
+            if (!Directory.Exists(dir)) return;
+
+            // Find matches
+            var entries = new List<string>();
+            if (partial.EndsWith('/') || !Path.GetFileName(partial).Contains('.'))
+            {
+                // Include directories
+                var dirs = Directory.GetDirectories(dir, pattern);
+                entries.AddRange(dirs.Select(d => d + "/"));
+            }
+            var files = Directory.GetFiles(dir, pattern);
+            entries.AddRange(files);
+
+            if (entries.Count == 0) return;
+
+            if (entries.Count == 1)
+            {
+                // Single match - complete it
+                var completion = entries[0];
+                if (partial.StartsWith("./") || partial.StartsWith("../"))
+                {
+                    // Keep relative prefix
+                    var prefix = Path.GetDirectoryName(partial) ?? "";
+                    if (!string.IsNullOrEmpty(prefix)) completion = prefix + "/" + Path.GetFileName(completion);
+                }
+                else if (partial.StartsWith("~"))
+                {
+                    // Convert back to ~ form if that's what user typed
+                    var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                    if (completion.StartsWith(home))
+                        completion = "~" + completion[home.Length..];
+                }
+
+                var newText = beforeCursor[..wordStart] + completion + text[cursorPos..];
+                _inputField.Text = newText;
+                _inputField.CursorPosition = wordStart + completion.Length;
+            }
+            else
+            {
+                // Multiple matches - show them
+                var commonPrefix = FindCommonPrefix(entries);
+                if (commonPrefix.Length > partial.Length)
+                {
+                    // Complete to common prefix
+                    var newText = beforeCursor[..wordStart] + commonPrefix + text[cursorPos..];
+                    _inputField.Text = newText;
+                    _inputField.CursorPosition = wordStart + commonPrefix.Length;
+                }
+                else
+                {
+                    // Show options
+                    _controller.ShowCompletions(entries.Select(Path.GetFileName).ToList());
+                }
+            }
+        }
+        catch { /* ignore completion errors */ }
+    }
+
+    private static string FindCommonPrefix(List<string> strings)
+    {
+        if (strings.Count == 0) return "";
+        var prefix = strings[0];
+        foreach (var s in strings)
+        {
+            while (!s.StartsWith(prefix) && prefix.Length > 0)
+                prefix = prefix[..^1];
+        }
+        return prefix;
     }
 }

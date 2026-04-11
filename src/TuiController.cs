@@ -458,6 +458,15 @@ public class TuiController
         }
     }
 
+    /// <summary>Show path completion options in the chat.</summary>
+    public void ShowCompletions(List<string> options)
+    {
+        if (_mainWindow == null || options.Count == 0) return;
+        _mainWindow.AddColoredBlock("  " + string.Join("  ", options.Take(20)), DarkColors.Dim);
+        if (options.Count > 20)
+            _mainWindow.AddColoredBlock($"  ... and {options.Count - 20} more", DarkColors.Dim);
+    }
+
     private void ShowHelp()
     {
         if (_mainWindow == null) return;
