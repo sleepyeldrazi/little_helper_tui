@@ -11,7 +11,7 @@ public static class DarkColors
 {
     public static readonly ColorScheme Base = MakeScheme(Color.Gray, Color.Black);
     public static readonly ColorScheme UserBorder = MakeScheme(Color.Green, Color.Black);
-    public static readonly ColorScheme AssistantBorder = MakeScheme(new Color(110, 130, 230), Color.Black);
+    public static readonly ColorScheme AssistantBorder = MakeScheme(new Color(159, 156, 236), Color.Black);
     public static readonly ColorScheme ThinkingBorder = MakeScheme(Color.DarkGray, Color.Black);
     public static readonly ColorScheme Content = MakeScheme(Color.White, Color.Black);
     public static readonly ColorScheme ToolOk = MakeScheme(Color.Green, Color.Black);
@@ -25,10 +25,10 @@ public static class DarkColors
 
     public static readonly ColorScheme Dialog = new()
     {
-        Normal = new Attribute(Color.Gray, new Color(30, 30, 30)),
-        Focus = new Attribute(Color.White, new Color(50, 50, 60)),
-        HotNormal = new Attribute(Color.White, new Color(30, 30, 30)),
-        HotFocus = new Attribute(Color.White, new Color(50, 50, 60))
+        Normal = new Attribute(Color.Gray, new Color(35, 35, 45)),
+        Focus = new Attribute(Color.White, new Color(55, 55, 70)),
+        HotNormal = new Attribute(Color.White, new Color(35, 35, 45)),
+        HotFocus = new Attribute(Color.White, new Color(55, 55, 70))
     };
 
     private static ColorScheme MakeScheme(Color fg, Color bg) => new()

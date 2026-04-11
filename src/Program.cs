@@ -145,13 +145,20 @@ class Program
         return dialog.Result;
     }
 
-    /// <summary>Show model picker. Loops back if manual entry is cancelled.</summary>
+    /// <summary>Show model picker. Loops back if manual/endpoint entry is cancelled.</summary>
     private static ResolvedModel? ShowModelSelection()
     {
         while (true)
         {
             var dialog = new ModelSelectionDialog();
             Application.Run(dialog);
+
+            if (dialog.ShowEndpointSetup)
+            {
+                var result = ShowEndpointSetup();
+                if (result != null) return result;
+                continue;
+            }
 
             if (dialog.ShowManualEntry)
             {

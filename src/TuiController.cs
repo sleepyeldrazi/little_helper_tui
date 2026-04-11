@@ -244,19 +244,7 @@ public class TuiController
 
         if (string.IsNullOrEmpty(arg))
         {
-            var dialog = new ModelSelectionDialog();
-            Application.Run(dialog);
-
-            if (dialog.ShowManualEntry)
-            {
-                var manualDialog = new ManualModelDialog();
-                Application.Run(manualDialog);
-                newModel = manualDialog.Result;
-            }
-            else
-            {
-                newModel = dialog.SelectedModel;
-            }
+            newModel = ShowModelSelectionLoop();
         }
         else
         {
@@ -464,6 +452,33 @@ public class TuiController
     }
 
     // --- Helpers ---
+
+    private static ResolvedModel? ShowModelSelectionLoop()
+    {
+        while (true)
+        {
+            var dialog = new ModelSelectionDialog();
+            Application.Run(dialog);
+
+            if (dialog.ShowEndpointSetup)
+            {
+                var setup = new EndpointSetupDialog();
+                Application.Run(setup);
+                if (setup.Result != null) return setup.Result;
+                continue;
+            }
+
+            if (dialog.ShowManualEntry)
+            {
+                var manual = new ManualModelDialog();
+                Application.Run(manual);
+                if (manual.Result != null) return manual.Result;
+                continue;
+            }
+
+            return dialog.SelectedModel;
+        }
+    }
 
     private static async Task<ResolvedModel> DetectContextWindowAsync(ResolvedModel resolved)
     {

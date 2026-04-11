@@ -54,6 +54,7 @@ public class EndpointSetupDialog : Dialog
         Width = Dim.Percent(70);
         Height = Dim.Percent(80);
         ColorScheme = DarkColors.Dialog;
+        Margin.ShadowStyle = ShadowStyle.Transparent;
 
         var subtitle = new Label
         {
@@ -180,6 +181,7 @@ public class ProviderSetupDialog : Dialog
         Width = Dim.Percent(60);
         Height = isLocal ? 16 : 18;
         ColorScheme = DarkColors.Dialog;
+        Margin.ShadowStyle = ShadowStyle.Transparent;
 
         int y = 1;
 
