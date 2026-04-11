@@ -22,7 +22,7 @@ public static class EndpointSetup
         new("lm-studio", "LM Studio (local)", "http://localhost:1234/v1", "openai", "bearer",
             "default", 32768, Hint: "Start LM Studio's local server first"),
         new("llama-cpp", "llama.cpp server (local)", "http://localhost:8080/v1", "openai", "bearer",
-            "default", 4096, Hint: "Run llama-server with --port 8080"),
+            "default", 32768, Hint: "Run llama-server with --port 8080"),
 
         new("openai", "OpenAI (GPT-4o, o3, ...)", "https://api.openai.com/v1", "openai", "bearer",
             "gpt-4o", 128000),
