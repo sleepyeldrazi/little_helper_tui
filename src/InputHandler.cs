@@ -35,10 +35,21 @@ internal static class TerminalRawMode
     private const int TCSANOW = 0;
     private const int STDIN_FILENO = 0;
 
-    // Local modes
-    private const uint ICANON = 2;   // Canonical mode
-    private const uint ECHO = 8;     // Echo input
-    private const uint ISIG = 1;     // Signal chars
+    // Local modes (c_lflag)
+    private const uint ICANON = 2;    // Canonical mode
+    private const uint ECHO = 8;      // Echo input
+    private const uint ISIG = 1;      // Signal chars
+    private const uint IEXTEN = 32768; // Extended input processing
+
+    // Input modes (c_iflag)
+    private const uint IXON = 1024;   // Enable XON/XOFF flow control (output)
+    private const uint IXOFF = 4096;  // Enable XON/XOFF flow control (input)
+    private const uint ICRNL = 256;   // Map CR to NL
+    private const uint INLCR = 64;    // Map NL to CR
+    private const uint IGNCR = 128;   // Ignore CR
+
+    // Output modes (c_oflag)
+    private const uint OPOST = 1;     // Post-process output
 
     public static void EnableRawMode()
     {
@@ -55,8 +66,15 @@ internal static class TerminalRawMode
 
             _originalState = state;
 
-            // Disable canonical mode and echo
-            state.c_lflag &= ~(ICANON | ECHO | ISIG);
+            // Disable canonical mode, echo, and signal chars
+            // Also disable input processing that might interpret escape sequences
+            state.c_lflag &= ~(ICANON | ECHO | ISIG | IEXTEN);
+            state.c_iflag &= ~(IXON | IXOFF | ICRNL | INLCR | IGNCR);
+            state.c_oflag &= ~(OPOST);
+
+            // Set minimum read to 1 byte, no timeout
+            state.c_cc[6] = 1;  // VMIN
+            state.c_cc[5] = 0;  // VTIME
 
             if (tcsetattr(STDIN_FILENO, TCSANOW, ref state) == 0)
                 _isRaw = true;
@@ -199,32 +217,53 @@ public static class InputHandler
         // ESC (27) - could be escape sequence
         if (b == 27)
         {
-            // Check if more bytes available (with small timeout for sequence completion)
+            // Read the rest of the sequence with timeout
             var seq = new List<int> { 27 };
-            System.Threading.Thread.Sleep(2);
+            var timeout = DateTime.Now.AddMilliseconds(50);
 
-            while (Console.KeyAvailable && seq.Count < 20)
+            // Read as much as available up to the timeout
+            while (DateTime.Now < timeout && seq.Count < 30)
             {
-                int next = Console.Read();
-                if (next == -1) break;
-                seq.Add(next);
+                // Try to read non-blocking - in raw mode we can do this
+                if (Console.KeyAvailable)
+                {
+                    int next = Console.Read();
+                    if (next == -1) break;
+                    seq.Add(next);
+                }
+                else
+                {
+                    System.Threading.Thread.Sleep(1);
+                }
             }
 
             // Parse the sequence
             if (seq.Count >= 2 && seq[1] == '[')
             {
-                // CSI sequence
-                var seqStr = string.Join("", seq.Skip(2).Select(c => (char)c));
+                // CSI sequence - rebuild string for parsing
+                var seqBytes = seq.Skip(2).ToList();
+                if (seqBytes.Count == 0) return RawKey.None;
 
                 // Mouse SGR: <button;row;colM or m
-                if (seqStr.StartsWith('<'))
+                // Format: ESC [ < btn ; row ; col M
+                if (seqBytes[0] == '<')
                 {
-                    // Extract button code
-                    var parts = seqStr.Split(';');
-                    if (parts.Length >= 3)
+                    // Find the terminating M or m
+                    int termIdx = -1;
+                    for (int i = 0; i < seqBytes.Count; i++)
                     {
-                        var btnPart = parts[0].Substring(1); // Remove '<'
-                        if (int.TryParse(btnPart, out var btn))
+                        if (seqBytes[i] == 'M' || seqBytes[i] == 'm')
+                        {
+                            termIdx = i;
+                            break;
+                        }
+                    }
+
+                    if (termIdx > 0)
+                    {
+                        var content = string.Join("", seqBytes.Skip(1).Take(termIdx - 1).Select(c => (char)c));
+                        var parts = content.Split(';');
+                        if (parts.Length >= 1 && int.TryParse(parts[0], out var btn))
                         {
                             if (btn == 64) return new RawKey(ScrollAction.Up);   // Wheel up
                             if (btn == 65) return new RawKey(ScrollAction.Down); // Wheel down
@@ -232,6 +271,9 @@ public static class InputHandler
                     }
                     return RawKey.None;
                 }
+
+                // For other sequences, build string representation
+                var seqStr = string.Join("", seqBytes.Select(c => (char)c));
 
                 // Bracket paste
                 if (seqStr == "200~") return new RawKey(new ConsoleKeyInfo('\x16', ConsoleKey.P, false, false, false));
