@@ -105,7 +105,7 @@ class Program
         SessionLogger? logger = null;
 
         // Helper to create/recreate the agent when model changes or on reset
-        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer, _tuiConfig);
+        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer, _tuiConfig, logger);
 
         while (true)
         {
