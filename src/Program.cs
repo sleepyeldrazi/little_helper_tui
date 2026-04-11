@@ -20,8 +20,10 @@ class Program
         // Always set COLORTERM=truecolor (not just if unset) to force truecolor mode
         Environment.SetEnvironmentVariable("COLORTERM", "truecolor");
 
-        // Force NetDriver on macOS/Linux for truecolor support (CursesDriver doesn't support it)
-        Application.ForceDriver = "NetDriver";
+        // Select driver based on config: "net" for truecolor, "curses" for speed
+        Application.ForceDriver = config.Driver.Equals("curses", StringComparison.OrdinalIgnoreCase)
+            ? "CursesDriver"
+            : "NetDriver";
 
         // MUST set Force16Colors BEFORE Init() for truecolor detection to work
         Application.Force16Colors = false;

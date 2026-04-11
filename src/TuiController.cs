@@ -193,6 +193,9 @@ public class TuiController
             case ":cancel":
                 Cancel();
                 break;
+            case ":driver":
+                ToggleDriver(arg);
+                break;
             case ":help" or ":h":
                 ShowHelp();
                 break;
@@ -389,8 +392,42 @@ public class TuiController
         ConfigLine("git_checkpoint", _config.GitCheckpoint.ToString());
         ConfigLine("theme", _config.Theme);
         ConfigLine("verbose", _config.Verbose.ToString());
+        ConfigLine("driver", _config.Driver);
         _mainWindow.AddColoredBlock("");
         _mainWindow.AddColoredBlock("Edit ~/.little_helper/tui.json to change settings.", DarkColors.Dim);
+    }
+
+    private void ToggleDriver(string arg)
+    {
+        if (_mainWindow == null) return;
+
+        string newDriver;
+        if (string.IsNullOrEmpty(arg))
+        {
+            // Toggle between net and curses
+            newDriver = _config.Driver.Equals("curses", StringComparison.OrdinalIgnoreCase) ? "net" : "curses";
+        }
+        else if (arg.Equals("net", StringComparison.OrdinalIgnoreCase) || arg.Equals("curses", StringComparison.OrdinalIgnoreCase))
+        {
+            newDriver = arg.ToLowerInvariant();
+        }
+        else
+        {
+            _mainWindow.AddColoredBlock("Usage: :driver [net|curses]");
+            _mainWindow.AddColoredBlock("  net    = NetDriver (truecolor, slower)");
+            _mainWindow.AddColoredBlock("  curses = CursesDriver (16-color, faster)");
+            return;
+        }
+
+        _config.Driver = newDriver;
+        _config.Save();
+
+        var description = newDriver == "net"
+            ? "NetDriver (truecolor, slower)"
+            : "CursesDriver (16-color, faster)";
+
+        _mainWindow.AddColoredBlock($"Driver set to: {description}");
+        _mainWindow.AddColoredBlock("Restart little helper to apply the change.", DarkColors.Dim);
     }
 
     private void ConfigLine(string key, string value)
@@ -433,6 +470,7 @@ public class TuiController
         HelpLine(":diff", "Show diff for last file write");
         HelpLine(":files", "List files changed this session");
         HelpLine(":config", "Show TUI config");
+        HelpLine(":driver [net|curses]", "Toggle console driver");
         HelpLine(":reset", "Reset conversation");
         HelpLine(":cancel", "Cancel current agent run");
         HelpLine(":hide", "Drop to shell, return with 'exit'");

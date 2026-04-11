@@ -5,13 +5,12 @@ using Attribute = Terminal.Gui.Attribute;
 namespace LittleHelperTui.Views;
 
 /// <summary>
-/// Color schemes using terminal's native background (Color.None) for transparency.
-/// Foreground colors are RGB for consistent accent colors.
+/// Color schemes: dark background (R:21 G:24 B:28), softer palette matching old Spectre TUI.
 /// </summary>
 public static class DarkColors
 {
-    // Use terminal's native background color (allows transparency/acrylic effects)
-    public static readonly Color Bg = Color.None;
+    // Background color: R:21 G:24 B:28 (dark grayish)
+    public static readonly Color Bg = new(21, 24, 28);
 
     public static readonly ColorScheme Base = MakeScheme(Color.Gray, Bg);
     public static readonly ColorScheme UserBorder = MakeScheme(Color.Green, Bg);
@@ -29,10 +28,10 @@ public static class DarkColors
 
     public static readonly ColorScheme Dialog = new()
     {
-        Normal = new Attribute(Color.Gray, Color.None),
-        Focus = new Attribute(Color.White, Color.None),
-        HotNormal = new Attribute(Color.White, Color.None),
-        HotFocus = new Attribute(Color.White, Color.None)
+        Normal = new Attribute(Color.Gray, new Color(40, 44, 52)),
+        Focus = new Attribute(Color.White, new Color(55, 60, 72)),
+        HotNormal = new Attribute(Color.White, new Color(40, 44, 52)),
+        HotFocus = new Attribute(Color.White, new Color(55, 60, 72))
     };
 
     private static ColorScheme MakeScheme(Color fg, Color bg) => new()
