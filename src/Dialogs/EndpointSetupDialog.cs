@@ -165,7 +165,7 @@ public class EndpointSetupDialog : Dialog
 }
 
 /// <summary>
-/// Provider-specific setup: endpoint URL, model name, API key.
+/// Provider-specific setup: endpoint URL, model name (with fetch from server), API key.
 /// </summary>
 public class ProviderSetupDialog : Dialog
 {
@@ -178,7 +178,7 @@ public class ProviderSetupDialog : Dialog
     {
         Title = $"Set up {providerName}";
         Width = Dim.Percent(60);
-        Height = isLocal ? 12 : 14;
+        Height = isLocal ? 16 : 18;
         ColorScheme = DarkColors.Dialog;
 
         int y = 1;
@@ -194,17 +194,82 @@ public class ProviderSetupDialog : Dialog
         var urlField = new TextField { X = 1, Y = y + 1, Width = Dim.Fill(2), Text = defaultUrl };
         y += 3;
 
-        var modelLabel = new Label { X = 1, Y = y, Text = "Model name:" };
-        var modelField = new TextField { X = 1, Y = y + 1, Width = Dim.Fill(2), Text = defaultModel };
-        y += 3;
-
         TextField? apiKeyField = null;
         if (!isLocal)
         {
             var apiKeyLabel = new Label { X = 1, Y = y, Text = "API key:" };
             apiKeyField = new TextField { X = 1, Y = y + 1, Width = Dim.Fill(2), Secret = true, Text = "" };
             Add(apiKeyLabel, apiKeyField);
+            y += 3;
         }
+
+        var modelLabel = new Label { X = 1, Y = y, Text = "Model:" };
+        var modelField = new TextField { X = 1, Y = y + 1, Width = Dim.Fill(16), Text = defaultModel };
+        var fetchButton = new Button { X = Pos.AnchorEnd(15), Y = y + 1, Title = "Fetch List" };
+        y += 3;
+
+        var modelListView = new ListView
+        {
+            X = 1, Y = y,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Visible = false,
+            ColorScheme = DarkColors.Dialog
+        };
+
+        fetchButton.Accept += async (s, e) =>
+        {
+            if (e is HandledEventArgs he) he.Handled = true;
+            var url = urlField.Text?.Trim() ?? "";
+            if (string.IsNullOrEmpty(url)) return;
+
+            fetchButton.Title = "Fetching...";
+            fetchButton.Enabled = false;
+            Application.Refresh();
+
+            try
+            {
+                var key = apiKeyField?.Text?.Trim();
+                var models = await ModelClient.FetchAvailableModels(
+                    url.TrimEnd('/'), string.IsNullOrEmpty(key) ? null : key);
+
+                Application.Invoke(() =>
+                {
+                    fetchButton.Title = "Fetch List";
+                    fetchButton.Enabled = true;
+
+                    if (models.Count == 0)
+                    {
+                        MessageBox.ErrorQuery("No Models", "Could not fetch models from endpoint.", "OK");
+                        return;
+                    }
+
+                    var items = new System.Collections.ObjectModel.ObservableCollection<string>(models);
+                    modelListView.Source = new ListWrapper<string>(items);
+                    modelListView.Visible = true;
+                    modelListView.SetFocus();
+                });
+            }
+            catch
+            {
+                Application.Invoke(() =>
+                {
+                    fetchButton.Title = "Fetch List";
+                    fetchButton.Enabled = true;
+                    MessageBox.ErrorQuery("Error", "Failed to connect to endpoint.", "OK");
+                });
+            }
+        };
+
+        modelListView.OpenSelectedItem += (s, e) =>
+        {
+            if (e.Item >= 0 && modelListView.Source != null)
+            {
+                modelField.Text = modelListView.Source.ToList()[e.Item]?.ToString() ?? "";
+                modelListView.Visible = false;
+                modelField.SetFocus();
+            }
+        };
 
         var okButton = new Button { Title = "OK", IsDefault = true };
         okButton.Accept += (s, e) =>
@@ -229,6 +294,6 @@ public class ProviderSetupDialog : Dialog
 
         AddButton(okButton);
         AddButton(cancelButton);
-        Add(urlLabel, urlField, modelLabel, modelField);
+        Add(urlLabel, urlField, modelLabel, modelField, fetchButton, modelListView);
     }
 }

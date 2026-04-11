@@ -473,21 +473,15 @@ public class TuiController
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            IModelClient client;
-            if (resolved.ApiType == "anthropic")
-            {
-                client = new AnthropicClient(
+            using IModelClient client = resolved.ApiType == "anthropic"
+                ? new AnthropicClient(
                     resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
                     string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
-                    resolved.Headers, resolved.AuthType);
-            }
-            else
-            {
-                client = new ModelClient(
+                    resolved.Headers, resolved.AuthType)
+                : new ModelClient(
                     resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
                     string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
                     resolved.Headers);
-            }
 
             var detected = await client.QueryContextWindow(cts.Token);
             if (detected.HasValue && detected.Value > 0)
