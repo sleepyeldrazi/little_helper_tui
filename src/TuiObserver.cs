@@ -85,6 +85,20 @@ public class TuiObserver : IAgentObserver
     }
 
     /// <summary>
+    /// Record a render action into history for redraw.
+    /// Use for UI elements written outside observer callbacks
+    /// (user panels, separators, status bar) so they survive redraw.
+    /// </summary>
+    public void Record(Action<IAnsiConsole> action)
+    {
+        lock (_lock)
+        {
+            _renderHistory.Add(action);
+        }
+        action(AnsiConsole.Console);
+    }
+
+    /// <summary>
     /// Clear screen and replay all rendered panels at the current terminal width.
     /// Called when terminal width changes (font size, window resize).
     /// </summary>

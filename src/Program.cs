@@ -11,6 +11,13 @@ class Program
     private static GitCheckpoint? _gitCheckpoint;
     private static int _lastConsoleWidth = Console.WindowWidth;
 
+    // Alternate screen buffer: preserves user's terminal history on exit
+    private const string EnterAltBuffer = "\x1b[?1049h";
+    private const string LeaveAltBuffer = "\x1b[?1049l";
+
+    private static void EnterAlternateScreen() => Console.Write(EnterAltBuffer);
+    private static void LeaveAlternateScreen() => Console.Write(LeaveAltBuffer);
+
     /// <summary>Check if terminal width changed and redraw if so.</summary>
     private static void CheckResize(IAnsiConsole console, TuiObserver observer)
     {
@@ -71,6 +78,14 @@ class Program
             console.MarkupLine("[yellow]Use :quit to exit.[/]");
         };
 
+        // Enter alternate screen buffer — preserves user's terminal history
+        EnterAlternateScreen();
+        Console.Out.Flush();
+        _lastConsoleWidth = Console.WindowWidth;
+
+        // Ensure we leave alternate buffer on any exit path
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => LeaveAlternateScreen();
+
         var observer = new TuiObserver(_tuiConfig);
         Agent? agent = null;
         SessionLogger? logger = null;
@@ -82,7 +97,7 @@ class Program
         {
             CheckResize(console, observer);
             observer.Drain(console);
-            console.MarkupLine("[dim]──[/]");
+            observer.Record(c => c.MarkupLine("[dim]──[/]"));
 
             var input = InputHandler.ReadLine(console);
             if (input == null) { console.MarkupLine("[dim]Goodbye![/]"); break; }
@@ -146,8 +161,11 @@ class Program
                 .Border(BoxBorder.Rounded)
                 .BorderColor(Color.Green)
                 .Expand();
-            console.Write(userPanel);
-            console.WriteLine();
+            observer.Record(c =>
+            {
+                c.Write(userPanel);
+                c.WriteLine();
+            });
 
             // Set up tool interceptor for git checkpoints + diff snapshots
             agent.Control.ToolInterceptor = call =>
@@ -233,7 +251,7 @@ class Program
             foreach (var line in stderrLines)
             {
                 var msg = line.Length > 200 ? line[..200] + "..." : line;
-                console.MarkupLine($"[red][stderr] {Markup.Escape(msg)}[/]");
+                observer.Record(c => c.MarkupLine($"[red][stderr] {Markup.Escape(msg)}[/]"));
             }
 
             sw.Stop();
@@ -241,19 +259,24 @@ class Program
 
             if (result2 != null)
             {
-                StatusBar.RenderDone(console, modelId, result2, observer.CurrentStep, sw.ElapsedMilliseconds, observer);
+                // Capture values for the closure
+                var doneStep = observer.CurrentStep;
+                var doneMs = sw.ElapsedMilliseconds;
+                var doneResult = result2;
+                observer.Record(c => StatusBar.RenderDone(c, modelId, doneResult, doneStep, doneMs, observer));
 
                 // Auto-show diffs if configured and files were changed
                 if (_tuiConfig.AutoShowDiffs && result2.FilesChanged.Count > 0)
                 {
                     var lastFile = result2.FilesChanged.LastOrDefault();
                     if (lastFile != null)
-                        DiffViewer.ShowLastDiff(console, lastFile);
+                        observer.Record(c => DiffViewer.ShowLastDiff(c, lastFile));
                 }
             }
         }
 
         logger?.Dispose();
+        LeaveAlternateScreen();
         return 0;
     }
 
@@ -273,8 +296,40 @@ class Program
         switch (cmd)
         {
             case ":quit" or ":q" or ":exit":
+                LeaveAlternateScreen();
                 console.MarkupLine("[dim]Goodbye![/]");
                 return new CmdHandleResult(CmdResult.Quit);
+
+            case ":hide" or ":sh" or ":shell":
+                // Drop back to the user's terminal, come back to same state
+                LeaveAlternateScreen();
+                Console.Out.Flush();
+
+                var shell = Environment.GetEnvironmentVariable("SHELL") ?? "/bin/bash";
+                console.MarkupLine("[dim]Spawning shell. Type 'exit' or Ctrl+D to return to little helper.[/]");
+                Console.Out.Flush();
+
+                var psi = new ProcessStartInfo(shell)
+                {
+                    UseShellExecute = false,
+                    WorkingDirectory = workingDir
+                };
+                try
+                {
+                    var shellProc = Process.Start(psi);
+                    shellProc?.WaitForExit();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to start shell: {ex.Message}");
+                }
+
+                // Re-enter alternate buffer and redraw
+                EnterAlternateScreen();
+                Console.Out.Flush();
+                _lastConsoleWidth = Console.WindowWidth;
+                observer.Redraw(console);
+                return new CmdHandleResult(CmdResult.Continue);
 
             case ":model":
                 ResolvedModel? newResolved;
@@ -399,6 +454,7 @@ class Program
                 console.MarkupLine("  [blue]:config[/]         Show TUI config");
                 console.MarkupLine("  [blue]:reset[/]          Reset conversation");
                 console.MarkupLine("  [blue]:help[/]           Show this help");
+                console.MarkupLine("  [blue]:hide[/]           Drop to shell, return with 'exit'");
                 console.MarkupLine("  [blue]:quit[/]           Exit");
                 console.WriteLine();
                 console.MarkupLine("[dim]During agent run: Ctrl+C = cancel[/]");
