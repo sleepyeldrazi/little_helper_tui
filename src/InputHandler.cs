@@ -1,10 +1,83 @@
 using System.Text;
 using Spectre.Console;
+using System.Runtime.InteropServices;
 
 namespace LittleHelperTui;
 
 /// <summary>Possible scroll actions from input.</summary>
 public enum ScrollAction { None, Up, Down }
+
+/// <summary>Terminal raw mode handling for Unix systems.</summary>
+internal static class TerminalRawMode
+{
+    private static bool _isRaw = false;
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int tcgetattr(int fd, out termios termios);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int tcsetattr(int fd, int optional_actions, ref termios termios);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct termios
+    {
+        public uint c_iflag;
+        public uint c_oflag;
+        public uint c_cflag;
+        public uint c_lflag;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
+        public byte[] c_cc;
+        public uint c_ispeed;
+        public uint c_ospeed;
+    }
+
+    private static termios? _originalState;
+    private const int TCSANOW = 0;
+    private const int STDIN_FILENO = 0;
+
+    // Local modes
+    private const uint ICANON = 2;   // Canonical mode
+    private const uint ECHO = 8;     // Echo input
+    private const uint ISIG = 1;     // Signal chars
+
+    public static void EnableRawMode()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX) &&
+            !RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return; // Windows doesn't need this
+
+        if (_isRaw) return;
+
+        try
+        {
+            if (tcgetattr(STDIN_FILENO, out var state) != 0)
+                return;
+
+            _originalState = state;
+
+            // Disable canonical mode and echo
+            state.c_lflag &= ~(ICANON | ECHO | ISIG);
+
+            if (tcsetattr(STDIN_FILENO, TCSANOW, ref state) == 0)
+                _isRaw = true;
+        }
+        catch { /* Best effort */ }
+    }
+
+    public static void DisableRawMode()
+    {
+        if (!_isRaw || !_originalState.HasValue)
+            return;
+
+        try
+        {
+            var state = _originalState.Value;
+            tcsetattr(STDIN_FILENO, TCSANOW, ref state);
+            _isRaw = false;
+        }
+        catch { /* Best effort */ }
+    }
+}
 
 /// <summary>
 /// Custom readline input with cursor movement, editing keys,
@@ -55,214 +128,318 @@ public static class InputHandler
         Console.Write($"\u001b[1m{prompt}\u001b[0m ");
         var promptLen = prompt.Length + 1; // visible width of "> "
 
-        while (true)
+        // Enable raw mode on Unix to get escape sequences
+        TerminalRawMode.EnableRawMode();
+        try
         {
-            var key = Console.ReadKey(true);
-
-            // Detect escape sequences: bracket paste, mouse wheel, Alt+arrows
-            // Terminals send \x1b[200~ before pasted content and \x1b[201~ after
-            if (key.Key == ConsoleKey.Escape)
+            while (true)
             {
-                var csiAction = TryParseCsiSequence();
-                if (csiAction == CsiResult.BracketPasteStart)
-                {
-                    inBracketPaste = true;
-                    continue;
-                }
-                if (csiAction == CsiResult.BracketPasteEnd)
-                {
-                    inBracketPaste = false;
-                    continue;
-                }
-                if (csiAction == CsiResult.MouseWheelUp)
-                {
-                    QueueScroll(ScrollAction.Up);
-                    continue;
-                }
-                if (csiAction == CsiResult.MouseWheelDown)
-                {
-                    QueueScroll(ScrollAction.Down);
-                    continue;
-                }
-                if (csiAction == CsiResult.AltUp)
-                {
-                    QueueScroll(ScrollAction.Up);
-                    continue;
-                }
-                if (csiAction == CsiResult.AltDown)
-                {
-                    QueueScroll(ScrollAction.Down);
-                    continue;
-                }
-                // Plain Escape — clear line
-                ClearLine(buf, cursor, promptLen, prevRenderedLines);
-                buf.Clear();
-                cursor = 0;
-                prevRenderedLines = 1;
-                continue;
-            }
+                var key = ReadKeyRaw();
 
-            switch (key)
-            {
-                // --- Submit / Cancel ---
-                case { Key: ConsoleKey.Enter }:
-                    if (inBracketPaste)
-                    {
-                        // In bracket paste: treat newline as literal \n
-                        buf.Insert(cursor, '\n');
-                        cursor++;
-                        break;
-                    }
-                    Console.WriteLine();
+                // Check for scroll events first (processed separately)
+                if (key.Scroll != ScrollAction.None)
+                {
+                    QueueScroll(key.Scroll);
+                    continue;
+                }
+
+                // Process regular key
+                if (!key.HasValue)
+                    continue;
+
+                var k = key.Key;
+
+                // Handle the key
+                var result = ProcessKey(k, buf, ref cursor, ref prevRenderedLines, ref inBracketPaste, prompt, promptLen);
+                if (result == ReadLineResult.Submit)
+                {
                     var line = buf.ToString();
                     if (!string.IsNullOrEmpty(line))
                     {
-                        // Dedup history
                         if (History.Count == 0 || History[^1] != line)
                             History.Add(line);
                     }
                     _historyIndex = -1;
                     LastRenderedLineCount = prevRenderedLines;
                     return line;
-
-                case { Key: ConsoleKey.C, Modifiers: ConsoleModifiers.Control }:
-                case { Key: ConsoleKey.D, Modifiers: ConsoleModifiers.Control }:
-                    Console.WriteLine();
+                }
+                if (result == ReadLineResult.Cancel)
+                {
                     _historyIndex = -1;
                     return null;
+                }
+            }
+        }
+        finally
+        {
+            TerminalRawMode.DisableRawMode();
+        }
+    }
 
-                // --- Cursor movement ---
-                case { Key: ConsoleKey.LeftArrow }:
-                    if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
-                        cursor = JumpWordBack(buf, cursor);
-                    else if (cursor > 0)
-                        cursor--;
-                    break;
+    private enum ReadLineResult { Continue, Submit, Cancel }
 
-                case { Key: ConsoleKey.RightArrow }:
-                    if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
-                        cursor = JumpWordForward(buf, cursor);
-                    else if (cursor < buf.Length)
-                        cursor++;
-                    break;
+    /// <summary>Raw key with optional scroll action.</summary>
+    private readonly struct RawKey
+    {
+        public ConsoleKeyInfo Key { get; }
+        public ScrollAction Scroll { get; }
+        public bool HasValue { get; }
 
-                case { Key: ConsoleKey.Home }:
-                case { Key: ConsoleKey.A, Modifiers: ConsoleModifiers.Control }:
-                    cursor = 0;
-                    break;
+        public RawKey(ConsoleKeyInfo key) { Key = key; Scroll = ScrollAction.None; HasValue = true; }
+        public RawKey(ScrollAction scroll) { Key = default; Scroll = scroll; HasValue = false; }
+        public static RawKey None => new();
+    }
 
-                case { Key: ConsoleKey.End }:
-                case { Key: ConsoleKey.E, Modifiers: ConsoleModifiers.Control }:
-                    cursor = buf.Length;
-                    break;
+    /// <summary>Read a key with raw escape sequence parsing.</summary>
+    private static RawKey ReadKeyRaw()
+    {
+        int b = Console.Read();
+        if (b == -1) return RawKey.None;
 
-                // --- Deletion ---
-                case { Key: ConsoleKey.Backspace }:
-                    if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
-                    {
-                        var newCursor = JumpWordBack(buf, cursor);
-                        buf.Remove(newCursor, cursor - newCursor);
-                        cursor = newCursor;
-                    }
-                    else if (cursor > 0)
-                    {
-                        buf.Remove(cursor - 1, 1);
-                        cursor--;
-                    }
-                    break;
+        // ESC (27) - could be escape sequence
+        if (b == 27)
+        {
+            // Check if more bytes available (with small timeout for sequence completion)
+            var seq = new List<int> { 27 };
+            System.Threading.Thread.Sleep(2);
 
-                case { Key: ConsoleKey.Delete }:
-                    if (cursor < buf.Length)
-                        buf.Remove(cursor, 1);
-                    break;
-
-                case { Key: ConsoleKey.U, Modifiers: ConsoleModifiers.Control }:
-                    buf.Remove(0, cursor);
-                    cursor = 0;
-                    break;
-
-                case { Key: ConsoleKey.K, Modifiers: ConsoleModifiers.Control }:
-                    buf.Remove(cursor, buf.Length - cursor);
-                    break;
-
-                // --- Tab completion ---
-                case { Key: ConsoleKey.Tab }:
-                    var (completed, options) = TabComplete(buf.ToString(), cursor);
-                    if (options != null && options.Count > 1)
-                    {
-                        // Clear current input lines before showing options
-                        if (prevRenderedLines > 1)
-                            Console.Write($"\u001b[{prevRenderedLines - 1}A");
-                        Console.Write("\r\u001b[J");  // Clear from cursor to end of screen
-
-                        Console.WriteLine();
-                        var display = string.Join("  ", options.Take(20).Select(Path.GetFileName));
-                        console.MarkupLine($"[dim]{Markup.Escape(display)}[/]");
-                        if (options.Count > 20)
-                            console.MarkupLine($"[dim]... and {options.Count - 20} more[/]");
-                        Console.Write($"\u001b[1m{prompt}\u001b[0m ");
-                        promptLen = prompt.Length + 1;
-                        prevRenderedLines = 1;  // Reset line count for redraw
-                    }
-                    else if (completed != null)
-                    {
-                        buf.Clear();
-                        buf.Append(completed);
-                        cursor = buf.Length;
-                    }
-                    break;
-
-                // --- History ---
-                case { Key: ConsoleKey.UpArrow }:
-                    if (History.Count > 0)
-                    {
-                        if (_historyIndex == -1)
-                        {
-                            _savedDraft = buf.ToString();
-                            _historyIndex = History.Count - 1;
-                        }
-                        else if (_historyIndex > 0)
-                        {
-                            _historyIndex--;
-                        }
-                        buf.Clear();
-                        buf.Append(History[_historyIndex]);
-                        cursor = buf.Length;
-                    }
-                    break;
-
-                case { Key: ConsoleKey.DownArrow }:
-                    if (_historyIndex >= 0)
-                    {
-                        if (_historyIndex < History.Count - 1)
-                        {
-                            _historyIndex++;
-                            buf.Clear();
-                            buf.Append(History[_historyIndex]);
-                        }
-                        else
-                        {
-                            _historyIndex = -1;
-                            buf.Clear();
-                            buf.Append(_savedDraft);
-                        }
-                        cursor = buf.Length;
-                    }
-                    break;
-
-                // --- Typing ---
-                default:
-                    if (!char.IsControl(key.KeyChar))
-                    {
-                        buf.Insert(cursor, key.KeyChar);
-                        cursor++;
-                    }
-                    break;
+            while (Console.KeyAvailable && seq.Count < 20)
+            {
+                int next = Console.Read();
+                if (next == -1) break;
+                seq.Add(next);
             }
 
-            // Re-render the line
-            RedrawLine(buf.ToString(), cursor, promptLen, ref prevRenderedLines);
+            // Parse the sequence
+            if (seq.Count >= 2 && seq[1] == '[')
+            {
+                // CSI sequence
+                var seqStr = string.Join("", seq.Skip(2).Select(c => (char)c));
+
+                // Mouse SGR: <button;row;colM or m
+                if (seqStr.StartsWith('<'))
+                {
+                    // Extract button code
+                    var parts = seqStr.Split(';');
+                    if (parts.Length >= 3)
+                    {
+                        var btnPart = parts[0].Substring(1); // Remove '<'
+                        if (int.TryParse(btnPart, out var btn))
+                        {
+                            if (btn == 64) return new RawKey(ScrollAction.Up);   // Wheel up
+                            if (btn == 65) return new RawKey(ScrollAction.Down); // Wheel down
+                        }
+                    }
+                    return RawKey.None;
+                }
+
+                // Bracket paste
+                if (seqStr == "200~") return new RawKey(new ConsoleKeyInfo('\x16', ConsoleKey.P, false, false, false));
+                if (seqStr == "201~") return new RawKey(new ConsoleKeyInfo('\x17', ConsoleKey.Q, false, false, false));
+
+                // Alt+arrows: 1;3A, 1;3B, etc
+                if (seqStr == "1;3A" || seqStr == "1;9A" || seqStr == ";3A")
+                    return new RawKey(ScrollAction.Up);
+                if (seqStr == "1;3B" || seqStr == "1;9B" || seqStr == ";3B")
+                    return new RawKey(ScrollAction.Down);
+
+                // Regular arrows
+                if (seqStr.EndsWith("A")) // Up
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.UpArrow, false, false, false));
+                if (seqStr.EndsWith("B")) // Down
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.DownArrow, false, false, false));
+                if (seqStr.EndsWith("C")) // Right
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false));
+                if (seqStr.EndsWith("D")) // Left
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.LeftArrow, false, false, false));
+                if (seqStr.EndsWith("H")) // Home
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.Home, false, false, false));
+                if (seqStr.EndsWith("F")) // End
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.End, false, false, false));
+
+                // 3~ = Delete
+                if (seqStr == "3~")
+                    return new RawKey(new ConsoleKeyInfo('\0', ConsoleKey.Delete, false, false, false));
+            }
+
+            // Unknown escape sequence - ignore
+            return RawKey.None;
         }
+
+        // Regular character
+        char c = (char)b;
+        ConsoleKey keyCode = MapCharToKey(c);
+        return new RawKey(new ConsoleKeyInfo(c, keyCode, false, false, false));
+    }
+
+    private static ConsoleKey MapCharToKey(char c)
+    {
+        if (c >= 'a' && c <= 'z') return (ConsoleKey)(c - 'a' + (int)ConsoleKey.A);
+        if (c >= 'A' && c <= 'Z') return (ConsoleKey)(c - 'A' + (int)ConsoleKey.A);
+        if (c >= '0' && c <= '9') return (ConsoleKey)(c - '0' + (int)ConsoleKey.D0);
+        if (c == ' ') return ConsoleKey.Spacebar;
+        if (c == '\t') return ConsoleKey.Tab;
+        if (c == '\r' || c == '\n') return ConsoleKey.Enter;
+        if (c == 127) return ConsoleKey.Backspace;
+        if (c == 3) return ConsoleKey.C; // Ctrl+C
+        if (c == 4) return ConsoleKey.D; // Ctrl+D
+        if (c == 21) return ConsoleKey.U; // Ctrl+U
+        if (c == 11) return ConsoleKey.K; // Ctrl+K
+        if (c == 1) return ConsoleKey.A; // Ctrl+A
+        if (c == 5) return ConsoleKey.E; // Ctrl+E
+        return ConsoleKey.None;
+    }
+
+    private static ReadLineResult ProcessKey(ConsoleKeyInfo key, StringBuilder buf, ref int cursor, ref int prevRenderedLines, ref bool inBracketPaste, string prompt, int promptLen)
+    {
+        // Check for bracket paste markers
+        if (key.KeyChar == '\x16') { inBracketPaste = true; return ReadLineResult.Continue; }
+        if (key.KeyChar == '\x17') { inBracketPaste = false; return ReadLineResult.Continue; }
+
+        switch (key.Key)
+        {
+            case ConsoleKey.Enter:
+                if (inBracketPaste)
+                {
+                    buf.Insert(cursor, '\n');
+                    cursor++;
+                    return ReadLineResult.Continue;
+                }
+                Console.WriteLine();
+                return ReadLineResult.Submit;
+
+            case ConsoleKey.C when key.Modifiers.HasFlag(ConsoleModifiers.Control):
+            case ConsoleKey.D when key.Modifiers.HasFlag(ConsoleModifiers.Control):
+                Console.WriteLine();
+                return ReadLineResult.Cancel;
+
+            case ConsoleKey.LeftArrow:
+                if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                    cursor = JumpWordBack(buf, cursor);
+                else if (cursor > 0)
+                    cursor--;
+                break;
+
+            case ConsoleKey.RightArrow:
+                if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                    cursor = JumpWordForward(buf, cursor);
+                else if (cursor < buf.Length)
+                    cursor++;
+                break;
+
+            case ConsoleKey.Home:
+            case ConsoleKey.A when key.Modifiers.HasFlag(ConsoleModifiers.Control):
+                cursor = 0;
+                break;
+
+            case ConsoleKey.End:
+            case ConsoleKey.E when key.Modifiers.HasFlag(ConsoleModifiers.Control):
+                cursor = buf.Length;
+                break;
+
+            case ConsoleKey.Backspace:
+                if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                {
+                    var newCursor = JumpWordBack(buf, cursor);
+                    buf.Remove(newCursor, cursor - newCursor);
+                    cursor = newCursor;
+                }
+                else if (cursor > 0)
+                {
+                    buf.Remove(cursor - 1, 1);
+                    cursor--;
+                }
+                break;
+
+            case ConsoleKey.Delete:
+                if (cursor < buf.Length)
+                    buf.Remove(cursor, 1);
+                break;
+
+            case ConsoleKey.U when key.Modifiers.HasFlag(ConsoleModifiers.Control):
+                buf.Remove(0, cursor);
+                cursor = 0;
+                break;
+
+            case ConsoleKey.K when key.Modifiers.HasFlag(ConsoleModifiers.Control):
+                buf.Remove(cursor, buf.Length - cursor);
+                break;
+
+            case ConsoleKey.Tab:
+                // Tab completion
+                var (completed, options) = TabComplete(buf.ToString(), cursor);
+                if (options != null && options.Count > 1)
+                {
+                    // Clear current input lines before showing options
+                    if (prevRenderedLines > 1)
+                        Console.Write($"\u001b[{prevRenderedLines - 1}A");
+                    Console.Write("\r\u001b[J");
+
+                    Console.WriteLine();
+                    var display = string.Join("  ", options.Take(20).Select(Path.GetFileName));
+                    AnsiConsole.MarkupLine($"[dim]{Markup.Escape(display)}[/]");
+                    if (options.Count > 20)
+                        AnsiConsole.MarkupLine($"[dim]... and {options.Count - 20} more[/]");
+                    Console.Write($"\u001b[1m{prompt}\u001b[0m ");
+                    prevRenderedLines = 1;
+                }
+                else if (completed != null)
+                {
+                    buf.Clear();
+                    buf.Append(completed);
+                    cursor = buf.Length;
+                }
+                break;
+
+            case ConsoleKey.UpArrow:
+                if (History.Count > 0)
+                {
+                    if (_historyIndex == -1)
+                    {
+                        _savedDraft = buf.ToString();
+                        _historyIndex = History.Count - 1;
+                    }
+                    else if (_historyIndex > 0)
+                    {
+                        _historyIndex--;
+                    }
+                    buf.Clear();
+                    buf.Append(History[_historyIndex]);
+                    cursor = buf.Length;
+                }
+                break;
+
+            case ConsoleKey.DownArrow:
+                if (_historyIndex >= 0)
+                {
+                    if (_historyIndex < History.Count - 1)
+                    {
+                        _historyIndex++;
+                        buf.Clear();
+                        buf.Append(History[_historyIndex]);
+                    }
+                    else
+                    {
+                        _historyIndex = -1;
+                        buf.Clear();
+                        buf.Append(_savedDraft);
+                    }
+                    cursor = buf.Length;
+                }
+                break;
+
+            default:
+                if (!char.IsControl(key.KeyChar))
+                {
+                    buf.Insert(cursor, key.KeyChar);
+                    cursor++;
+                }
+                break;
+        }
+
+        // Re-render the line
+        RedrawLine(buf.ToString(), cursor, promptLen, ref prevRenderedLines);
+        return ReadLineResult.Continue;
     }
 
     /// <summary>Clear and redraw the input line.</summary>
@@ -460,66 +637,5 @@ public static class InputHandler
         // Skip word chars
         while (pos < buf.Length && !char.IsWhiteSpace(buf[pos])) pos++;
         return pos;
-    }
-
-    // CSI sequence parsing results
-    private enum CsiResult { None, BracketPasteStart, BracketPasteEnd, MouseWheelUp, MouseWheelDown, AltUp, AltDown }
-
-    /// <summary>Try to parse a CSI escape sequence after Escape key was already read.</summary>
-    /// Handles:
-    /// - Bracket paste: ESC[200~ / ESC[201~
-    /// - Mouse wheel (SGR mode): ESC[<64;row;colM (up) / ESC[<65;row;colM (down)
-    /// - Alt+arrows: ESC[1;3A (up) / ESC[1;3B (down)
-    private static CsiResult TryParseCsiSequence()
-    {
-        if (!Console.KeyAvailable) return CsiResult.None;
-
-        var next = Console.ReadKey(true);
-        if (next.KeyChar != '[') return CsiResult.None;
-
-        // Read the sequence into a buffer
-        var seq = new StringBuilder();
-        seq.Append('[');
-
-        // Read until we hit a terminating character (~, M, A, B, C, D) or timeout
-        var timeout = DateTime.Now.AddMilliseconds(50);
-        while (DateTime.Now < timeout && Console.KeyAvailable)
-        {
-            var ch = Console.ReadKey(true);
-            seq.Append(ch.KeyChar);
-
-            // Check for terminators
-            if (ch.KeyChar == '~')
-            {
-                var seqStr = seq.ToString();
-                if (seqStr == "[200~") return CsiResult.BracketPasteStart;
-                if (seqStr == "[201~") return CsiResult.BracketPasteEnd;
-                return CsiResult.None;
-            }
-
-            // Mouse SGR mode: [<button;row;colM or m
-            if (ch.KeyChar == 'M' || ch.KeyChar == 'm')
-            {
-                var seqStr = seq.ToString();
-                // Wheel up = 64, wheel down = 65
-                if (seqStr.StartsWith("[<64;")) return CsiResult.MouseWheelUp;
-                if (seqStr.StartsWith("[<65;")) return CsiResult.MouseWheelDown;
-                return CsiResult.None;
-            }
-
-            // Arrow keys with modifiers: [1;3A (Alt+Up), [1;3B (Alt+Down)
-            if (ch.KeyChar == 'A')
-            {
-                if (seq.ToString() == "[1;3A") return CsiResult.AltUp;
-                return CsiResult.None;
-            }
-            if (ch.KeyChar == 'B')
-            {
-                if (seq.ToString() == "[1;3B") return CsiResult.AltDown;
-                return CsiResult.None;
-            }
-        }
-
-        return CsiResult.None;
     }
 }
