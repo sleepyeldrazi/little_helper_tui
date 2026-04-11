@@ -17,7 +17,7 @@ public static class DarkColors
     public static readonly ColorScheme ToolOk = MakeScheme(Color.Green, Color.Black);
     public static readonly ColorScheme ToolErr = MakeScheme(Color.Red, Color.Black);
     public static readonly ColorScheme Dim = MakeScheme(Color.DarkGray, Color.Black);
-    public static readonly ColorScheme Warning = MakeScheme(Color.Yellow, Color.Black);
+    public static readonly ColorScheme Warning = MakeScheme(new Color(180, 180, 180), Color.Black);
     public static readonly ColorScheme Bright = MakeScheme(Color.White, Color.Black);
     public static readonly ColorScheme Error = MakeScheme(Color.Red, Color.Black);
     public static readonly ColorScheme Bold = MakeScheme(Color.White, Color.Black);
@@ -25,9 +25,9 @@ public static class DarkColors
 
     public static readonly ColorScheme Dialog = new()
     {
-        Normal = new Attribute(Color.Gray, new Color(35, 35, 45)),
+        Normal = new Attribute(Color.Gray, new Color(40, 40, 50)),
         Focus = new Attribute(Color.White, new Color(55, 55, 70)),
-        HotNormal = new Attribute(Color.White, new Color(35, 35, 45)),
+        HotNormal = new Attribute(Color.White, new Color(40, 40, 50)),
         HotFocus = new Attribute(Color.White, new Color(55, 55, 70))
     };
 
