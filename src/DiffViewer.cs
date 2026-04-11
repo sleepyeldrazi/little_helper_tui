@@ -54,7 +54,7 @@ public static class DiffViewer
         {
             if (!File.Exists(filePath))
             {
-                window.AppendLine($"File not found: {filePath}");
+                window.AddColoredBlock($"File not found: {filePath}");
                 return;
             }
 
@@ -65,35 +65,35 @@ public static class DiffViewer
             var added = diff.Count(d => d.Type == DiffType.Added);
             var removed = diff.Count(d => d.Type == DiffType.Removed);
 
-            window.AppendLine($"Diff: {Path.GetRelativePath(WorkingDir, filePath)} (+{added} -{removed})");
+            window.AddColoredBlock($"Diff: {Path.GetRelativePath(WorkingDir, filePath)} (+{added} -{removed})");
 
             foreach (var line in diff.Take(100))
             {
                 switch (line.Type)
                 {
                     case DiffType.Added:
-                        window.AppendLine($"  + {line.Content}");
+                        window.AddColoredBlock($"  + {line.Content}");
                         break;
                     case DiffType.Removed:
-                        window.AppendLine($"  - {line.Content}");
+                        window.AddColoredBlock($"  - {line.Content}");
                         break;
                     case DiffType.Context:
-                        window.AppendLine($"    {line.Content}");
+                        window.AddColoredBlock($"    {line.Content}");
                         break;
                     case DiffType.Header:
-                        window.AppendLine($"  {line.Content}");
+                        window.AddColoredBlock($"  {line.Content}");
                         break;
                 }
             }
 
             if (diff.Count > 100)
-                window.AppendLine($"  ... ({diff.Count - 100} more lines)");
+                window.AddColoredBlock($"  ... ({diff.Count - 100} more lines)");
 
-            window.AppendLine();
+            window.AddColoredBlock("");
         }
         catch (Exception ex)
         {
-            window.AppendLine($"Error: {ex.Message}");
+            window.AddColoredBlock($"Error: {ex.Message}");
         }
     }
 

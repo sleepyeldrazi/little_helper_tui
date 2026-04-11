@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using LittleHelper;
+using LittleHelperTui.Views;
 using Terminal.Gui;
 
 namespace LittleHelperTui.Dialogs;
@@ -14,6 +15,7 @@ public class TokensDialog : Dialog
         Title = "Token Budget";
         Width = Dim.Percent(70);
         Height = Dim.Percent(80);
+        ColorScheme = DarkColors.Dialog;
 
         // Calculate breakdown
         var systemTokens = history

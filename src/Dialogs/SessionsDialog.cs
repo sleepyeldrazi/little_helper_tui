@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using LittleHelperTui.Views;
 using Terminal.Gui;
 
 namespace LittleHelperTui.Dialogs;
@@ -17,6 +18,7 @@ public class SessionsDialog : Dialog
         Title = "Sessions";
         Width = Dim.Percent(80);
         Height = Dim.Percent(80);
+        ColorScheme = DarkColors.Dialog;
 
         LoadSessions();
 
@@ -154,6 +156,7 @@ public class SessionDetailDialog : Dialog
         Title = $"Session: {session.Model}";
         Width = Dim.Percent(90);
         Height = Dim.Percent(90);
+        ColorScheme = DarkColors.Dialog;
 
         // Parse and format session entries
         var entries = new System.Collections.ObjectModel.ObservableCollection<string>();

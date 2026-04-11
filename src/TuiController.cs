@@ -129,12 +129,12 @@ public class TuiController
         }
         catch (OperationCanceledException)
         {
-            _mainWindow.AppendLine("Cancelled.");
+            _mainWindow.AddColoredBlock("Cancelled.");
             // _mainWindow.SetStatus("Cancelled");
         }
         catch (Exception ex)
         {
-            _mainWindow.AppendLine($"Error: {ex.Message}");
+            _mainWindow.AddColoredBlock($"Error: {ex.Message}");
             // _mainWindow.SetStatus("Error");
         }
         finally
@@ -194,7 +194,7 @@ public class TuiController
                 ShowHelp();
                 break;
             default:
-                _mainWindow?.AppendLine($"Unknown command: {cmd}  Type :help for commands");
+                _mainWindow?.AddColoredBlock($"Unknown command: {cmd}  Type :help for commands");
                 break;
         }
     }
@@ -260,7 +260,7 @@ public class TuiController
             newModel = ModelConfig.Load().Resolve(arg);
             if (newModel == null)
             {
-                _mainWindow.AppendLine($"Unknown model: {arg}");
+                _mainWindow.AddColoredBlock($"Unknown model: {arg}");
                 return;
             }
         }
@@ -270,7 +270,7 @@ public class TuiController
             _model = newModel;
             _agent = null;
             _observer?.Reset();
-            _mainWindow.AppendLine($"Switched to {newModel.ModelId}");
+            _mainWindow.AddColoredBlock($"Switched to {newModel.ModelId}");
             // _mainWindow.SetStatus($"Model: {newModel.ModelId}");
         }
     }
@@ -279,7 +279,7 @@ public class TuiController
     {
         if (_agent == null || _model == null)
         {
-            _mainWindow?.AppendLine("No conversation yet.");
+            _mainWindow?.AddColoredBlock("No conversation yet.");
             return;
         }
 
@@ -292,19 +292,19 @@ public class TuiController
     {
         if (_agent?.History.Count > 0)
         {
-            _mainWindow?.AppendLine("History (last 20):");
+            _mainWindow?.AddColoredBlock("History (last 20):");
             foreach (var msg in _agent.History.TakeLast(20))
             {
                 var content = msg.Content ?? "(tool calls)";
                 if (content.Length > 80) content = content[..80] + "...";
                 content = content.Replace("\n", " ").Trim();
-                _mainWindow?.AppendLine($"  [{msg.Role}] {content}");
+                _mainWindow?.AddColoredBlock($"  [{msg.Role}] {content}");
             }
-            _mainWindow?.AppendLine();
+            _mainWindow?.AddColoredBlock("");
         }
         else
         {
-            _mainWindow?.AppendLine("No conversation history yet.");
+            _mainWindow?.AddColoredBlock("No conversation history yet.");
         }
     }
 
@@ -328,7 +328,7 @@ public class TuiController
         if (skillContent != null)
         {
             _pendingSkillContent = skillContent;
-            _mainWindow?.AppendLine("Skill loaded. It will be prepended to your next prompt.");
+            _mainWindow?.AddColoredBlock("Skill loaded. It will be prepended to your next prompt.");
         }
     }
 
@@ -336,7 +336,7 @@ public class TuiController
     {
         if (_agent == null)
         {
-            _mainWindow?.AppendLine("No conversation yet.");
+            _mainWindow?.AddColoredBlock("No conversation yet.");
             return;
         }
 
@@ -348,14 +348,14 @@ public class TuiController
         if (lastFile != null)
             DiffViewer.ShowLastDiff(_mainWindow!, lastFile);
         else
-            _mainWindow?.AppendLine("No file writes in this session.");
+            _mainWindow?.AddColoredBlock("No file writes in this session.");
     }
 
     private void ShowFiles()
     {
         if (_agent == null)
         {
-            _mainWindow?.AppendLine("No conversation yet.");
+            _mainWindow?.AddColoredBlock("No conversation yet.");
             return;
         }
 
@@ -367,31 +367,31 @@ public class TuiController
 
         if (files.Count > 0)
         {
-            _mainWindow?.AppendLine("Files changed this session:");
+            _mainWindow?.AddColoredBlock("Files changed this session:");
             foreach (var f in files)
-                _mainWindow?.AppendLine($"  {f}");
-            _mainWindow?.AppendLine();
+                _mainWindow?.AddColoredBlock($"  {f}");
+            _mainWindow?.AddColoredBlock("");
         }
         else
         {
-            _mainWindow?.AppendLine("No files changed yet.");
+            _mainWindow?.AddColoredBlock("No files changed yet.");
         }
     }
 
     private void ShowConfig()
     {
-        _mainWindow?.AppendLine("TUI Config (~/.little_helper/tui.json):");
-        _mainWindow?.AppendLine($"  thinking_mode:        {_config.ThinkingMode}");
-        _mainWindow?.AppendLine($"  show_token_budget:    {_config.ShowTokenBudget}");
-        _mainWindow?.AppendLine($"  auto_show_diffs:      {_config.AutoShowDiffs}");
-        _mainWindow?.AppendLine($"  max_tool_output_lines: {_config.MaxToolOutputLines}");
-        _mainWindow?.AppendLine($"  max_steps:            {_config.MaxSteps}");
-        _mainWindow?.AppendLine($"  default_model:        {_config.DefaultModel ?? "(none)"}");
-        _mainWindow?.AppendLine($"  streaming:            {_config.Streaming}");
-        _mainWindow?.AppendLine($"  git_checkpoint:       {_config.GitCheckpoint}");
-        _mainWindow?.AppendLine($"  theme:                {_config.Theme}");
-        _mainWindow?.AppendLine($"  verbose:              {_config.Verbose}");
-        _mainWindow?.AppendLine();
+        _mainWindow?.AddColoredBlock("TUI Config (~/.little_helper/tui.json):");
+        _mainWindow?.AddColoredBlock($"  thinking_mode:        {_config.ThinkingMode}");
+        _mainWindow?.AddColoredBlock($"  show_token_budget:    {_config.ShowTokenBudget}");
+        _mainWindow?.AddColoredBlock($"  auto_show_diffs:      {_config.AutoShowDiffs}");
+        _mainWindow?.AddColoredBlock($"  max_tool_output_lines: {_config.MaxToolOutputLines}");
+        _mainWindow?.AddColoredBlock($"  max_steps:            {_config.MaxSteps}");
+        _mainWindow?.AddColoredBlock($"  default_model:        {_config.DefaultModel ?? "(none)"}");
+        _mainWindow?.AddColoredBlock($"  streaming:            {_config.Streaming}");
+        _mainWindow?.AddColoredBlock($"  git_checkpoint:       {_config.GitCheckpoint}");
+        _mainWindow?.AddColoredBlock($"  theme:                {_config.Theme}");
+        _mainWindow?.AddColoredBlock($"  verbose:              {_config.Verbose}");
+        _mainWindow?.AddColoredBlock("");
     }
 
     private void Reset()
@@ -400,7 +400,7 @@ public class TuiController
         _agent = null;
         _logger?.Dispose();
         _logger = null;
-        _mainWindow?.AppendLine("Conversation reset.");
+        _mainWindow?.AddColoredBlock("Conversation reset.");
     }
 
     private void Cancel()
@@ -408,27 +408,27 @@ public class TuiController
         if (_currentCts != null && !_currentCts.IsCancellationRequested)
         {
             _currentCts.Cancel();
-            _mainWindow?.AppendLine("Cancelling...");
+            _mainWindow?.AddColoredBlock("Cancelling...");
         }
     }
 
     private void ShowHelp()
     {
-        _mainWindow?.AppendLine("Commands:");
-        _mainWindow?.AppendLine("  :model [name]   Switch model");
-        _mainWindow?.AppendLine("  :tokens         Show token budget");
-        _mainWindow?.AppendLine("  :history        Show conversation history");
-        _mainWindow?.AppendLine("  :sessions [N]   Browse sessions / show session #N");
-        _mainWindow?.AppendLine("  :skills         Browse and inject skills");
-        _mainWindow?.AppendLine("  :diff           Show diff for last file write");
-        _mainWindow?.AppendLine("  :files          List files changed this session");
-        _mainWindow?.AppendLine("  :config         Show TUI config");
-        _mainWindow?.AppendLine("  :reset          Reset conversation");
-        _mainWindow?.AppendLine("  :cancel         Cancel current agent run");
-        _mainWindow?.AppendLine("  :hide           Drop to shell, return with 'exit'");
-        _mainWindow?.AppendLine("  :quit           Exit");
-        _mainWindow?.AppendLine();
-        _mainWindow?.AppendLine("During agent run: Ctrl+C = cancel");
+        _mainWindow?.AddColoredBlock("Commands:");
+        _mainWindow?.AddColoredBlock("  :model [name]   Switch model");
+        _mainWindow?.AddColoredBlock("  :tokens         Show token budget");
+        _mainWindow?.AddColoredBlock("  :history        Show conversation history");
+        _mainWindow?.AddColoredBlock("  :sessions [N]   Browse sessions / show session #N");
+        _mainWindow?.AddColoredBlock("  :skills         Browse and inject skills");
+        _mainWindow?.AddColoredBlock("  :diff           Show diff for last file write");
+        _mainWindow?.AddColoredBlock("  :files          List files changed this session");
+        _mainWindow?.AddColoredBlock("  :config         Show TUI config");
+        _mainWindow?.AddColoredBlock("  :reset          Reset conversation");
+        _mainWindow?.AddColoredBlock("  :cancel         Cancel current agent run");
+        _mainWindow?.AddColoredBlock("  :hide           Drop to shell, return with 'exit'");
+        _mainWindow?.AddColoredBlock("  :quit           Exit");
+        _mainWindow?.AddColoredBlock("");
+        _mainWindow?.AddColoredBlock("During agent run: Ctrl+C = cancel");
     }
 
     // --- Helpers ---

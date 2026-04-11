@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using LittleHelper;
+using LittleHelperTui.Views;
 using Terminal.Gui;
 
 namespace LittleHelperTui.Dialogs;
@@ -22,6 +23,7 @@ public class ModelSelectionDialog : Dialog
         Title = "Select a model";
         Width = Dim.Percent(60);
         Height = Dim.Percent(70);
+        ColorScheme = DarkColors.Dialog;
 
         LoadModels();
 
@@ -161,6 +163,7 @@ public class ManualModelDialog : Dialog
         Title = "Manual Model Entry";
         Width = Dim.Percent(60);
         Height = 14;
+        ColorScheme = DarkColors.Dialog;
 
         var endpointLabel = new Label { X = 1, Y = 1, Text = "Endpoint URL:" };
         _endpointField = new TextField

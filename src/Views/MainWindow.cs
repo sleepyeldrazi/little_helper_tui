@@ -1,19 +1,115 @@
 using System.Text;
 using Terminal.Gui;
+using Attribute = Terminal.Gui.Attribute;
 
 namespace LittleHelperTui.Views;
 
 /// <summary>
-/// Main application window. No visible border/chrome — acts as a full-screen container.
-/// Chat output is a scrollable read-only TextView. Input is a TextField at the bottom.
-/// Matches the old Spectre UI: just text filling the screen.
+/// Dark color schemes matching the old Spectre.Console TUI palette.
+/// </summary>
+public static class DarkColors
+{
+    /// <summary>Base scheme: light grey on black.</summary>
+    public static readonly ColorScheme Base = new()
+    {
+        Normal = new Attribute(Color.Gray, Color.Black),
+        Focus = new Attribute(Color.White, Color.Black),
+        HotNormal = new Attribute(Color.White, Color.Black),
+        HotFocus = new Attribute(Color.White, Color.Black)
+    };
+
+    /// <summary>User messages: green on black.</summary>
+    public static readonly ColorScheme User = new()
+    {
+        Normal = new Attribute(Color.Green, Color.Black),
+        Focus = new Attribute(Color.BrightGreen, Color.Black),
+        HotNormal = new Attribute(Color.BrightGreen, Color.Black),
+        HotFocus = new Attribute(Color.BrightGreen, Color.Black)
+    };
+
+    /// <summary>Assistant messages: blue on black.</summary>
+    public static readonly ColorScheme Assistant = new()
+    {
+        Normal = new Attribute(Color.Blue, Color.Black),
+        Focus = new Attribute(Color.BrightBlue, Color.Black),
+        HotNormal = new Attribute(Color.BrightBlue, Color.Black),
+        HotFocus = new Attribute(Color.BrightBlue, Color.Black)
+    };
+
+    /// <summary>Thinking: dim grey on black.</summary>
+    public static readonly ColorScheme Thinking = new()
+    {
+        Normal = new Attribute(Color.DarkGray, Color.Black),
+        Focus = new Attribute(Color.Gray, Color.Black),
+        HotNormal = new Attribute(Color.Gray, Color.Black),
+        HotFocus = new Attribute(Color.Gray, Color.Black)
+    };
+
+    /// <summary>Tool success: green on black.</summary>
+    public static readonly ColorScheme ToolOk = new()
+    {
+        Normal = new Attribute(Color.Green, Color.Black),
+        Focus = new Attribute(Color.BrightGreen, Color.Black),
+        HotNormal = new Attribute(Color.BrightGreen, Color.Black),
+        HotFocus = new Attribute(Color.BrightGreen, Color.Black)
+    };
+
+    /// <summary>Tool error: red on black.</summary>
+    public static readonly ColorScheme ToolErr = new()
+    {
+        Normal = new Attribute(Color.Red, Color.Black),
+        Focus = new Attribute(Color.BrightRed, Color.Black),
+        HotNormal = new Attribute(Color.BrightRed, Color.Black),
+        HotFocus = new Attribute(Color.BrightRed, Color.Black)
+    };
+
+    /// <summary>Dim info text.</summary>
+    public static readonly ColorScheme Dim = new()
+    {
+        Normal = new Attribute(Color.DarkGray, Color.Black),
+        Focus = new Attribute(Color.DarkGray, Color.Black),
+        HotNormal = new Attribute(Color.DarkGray, Color.Black),
+        HotFocus = new Attribute(Color.DarkGray, Color.Black)
+    };
+
+    /// <summary>Status/done: bright on black.</summary>
+    public static readonly ColorScheme Status = new()
+    {
+        Normal = new Attribute(Color.White, Color.Black),
+        Focus = new Attribute(Color.White, Color.Black),
+        HotNormal = new Attribute(Color.White, Color.Black),
+        HotFocus = new Attribute(Color.White, Color.Black)
+    };
+
+    /// <summary>Yellow warnings.</summary>
+    public static readonly ColorScheme Warning = new()
+    {
+        Normal = new Attribute(Color.Yellow, Color.Black),
+        Focus = new Attribute(Color.BrightYellow, Color.Black),
+        HotNormal = new Attribute(Color.BrightYellow, Color.Black),
+        HotFocus = new Attribute(Color.BrightYellow, Color.Black)
+    };
+
+    /// <summary>Dialog scheme: white on dark grey.</summary>
+    public static readonly ColorScheme Dialog = new()
+    {
+        Normal = new Attribute(Color.White, Color.DarkGray),
+        Focus = new Attribute(Color.Black, Color.Cyan),
+        HotNormal = new Attribute(Color.Cyan, Color.DarkGray),
+        HotFocus = new Attribute(Color.Black, Color.Cyan)
+    };
+}
+
+/// <summary>
+/// Main application window. Dark background, no border chrome.
+/// Chat area is a ScrollView of colored Label views. Input is a TextField at bottom.
 /// </summary>
 public class MainWindow : Window
 {
-    private readonly TextView _chatView;
+    private readonly ScrollView _scrollView;
+    private readonly View _chatContent;
     private readonly TextField _inputField;
     private readonly TuiController _controller;
-    private readonly StringBuilder _chatBuffer = new();
     private bool _autoScroll = true;
 
     // Input history
@@ -26,51 +122,59 @@ public class MainWindow : Window
     public MainWindow(TuiController controller)
     {
         _controller = controller;
-
-        // No border/title — match old full-screen Spectre look
         Title = "";
         BorderStyle = LineStyle.None;
+        ColorScheme = DarkColors.Base;
         X = 0;
         Y = 0;
         Width = Dim.Fill();
         Height = Dim.Fill();
 
-        // Chat output: read-only text view filling the screen
-        _chatView = new TextView
+        // Inner content view that grows as labels are added
+        _chatContent = new View
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Fill(1), // leave 1 row for input
-            ReadOnly = true,
-            WordWrap = true,
-            Text = ""
+            Height = Dim.Auto(),
+            ColorScheme = DarkColors.Base
         };
 
-        // Input field at bottom (acts as the > prompt)
+        // ScrollView wrapping the content
+        _scrollView = new ScrollView
+        {
+            X = 0,
+            Y = 0,
+            Width = Dim.Fill(),
+            Height = Dim.Fill(1),
+            ColorScheme = DarkColors.Base
+        };
+        _scrollView.Add(_chatContent);
+
+        // ">" prompt
+        var promptLabel = new Label
+        {
+            X = 0,
+            Y = Pos.AnchorEnd(1),
+            Text = "> ",
+            ColorScheme = DarkColors.Dim
+        };
+
+        // Input field
         _inputField = new TextField
         {
             X = 2,
             Y = Pos.AnchorEnd(1),
             Width = Dim.Fill(),
             Height = 1,
-            Text = ""
+            Text = "",
+            ColorScheme = DarkColors.Base
         };
 
-        // ">" prompt label
-        var promptLabel = new Label
-        {
-            X = 0,
-            Y = Pos.AnchorEnd(1),
-            Text = "> "
-        };
+        Add(_scrollView, promptLabel, _inputField);
 
-        Add(_chatView, promptLabel, _inputField);
-
-        // Wire up events
         _inputField.Accept += OnInputAccepting;
 
-        // Input history and scroll key bindings
         _inputField.KeyDown += (s, e) =>
         {
             switch (e.KeyCode)
@@ -97,32 +201,44 @@ public class MainWindow : Window
         _inputField.SetFocus();
     }
 
-    /// <summary>Set the status in the window title (minimal, no status bar).</summary>
-    public void SetStatus(string text)
+    public void SetStatus(string text) { /* inline in chat */ }
+
+    /// <summary>Get terminal width for panel formatting.</summary>
+    public int GetWidth()
     {
-        // No-op — old UI didn't have a persistent status bar.
-        // Status is shown inline in the chat via observer.
+        return _scrollView.Frame.Width > 0 ? _scrollView.Frame.Width - 1 : 80;
     }
 
     /// <summary>
-    /// Append text to the chat output. All formatting happens in the caller.
+    /// Add a colored text block to the chat. Each block is a Label with its own ColorScheme.
     /// </summary>
-    public void AppendText(string text)
+    public void AddColoredBlock(string text, ColorScheme? scheme = null)
     {
         Application.Invoke(() =>
         {
-            _chatBuffer.Append(text);
-            _chatView.Text = _chatBuffer.ToString();
+            var label = new Label
+            {
+                X = 0,
+                Y = _chatContent.Subviews.Count > 0
+                    ? Pos.Bottom(_chatContent.Subviews[^1])
+                    : 0,
+                Width = Dim.Fill(),
+                Height = Dim.Auto(),
+                Text = text,
+                ColorScheme = scheme ?? DarkColors.Base
+            };
+
+            _chatContent.Add(label);
 
             if (_autoScroll)
-                _chatView.MoveEnd();
+                ScrollToBottom();
         });
     }
 
-    /// <summary>Append a line of text (adds newline).</summary>
+    /// <summary>Convenience: add a line with default color.</summary>
     public void AppendLine(string text = "")
     {
-        AppendText(text + "\n");
+        AddColoredBlock(text, DarkColors.Base);
     }
 
     /// <summary>Clear all chat output.</summary>
@@ -130,39 +246,42 @@ public class MainWindow : Window
     {
         Application.Invoke(() =>
         {
-            _chatBuffer.Clear();
-            _chatView.Text = "";
+            foreach (var child in _chatContent.Subviews.ToList())
+                _chatContent.Remove(child);
             _autoScroll = true;
         });
     }
 
-    /// <summary>Get the current terminal width for panel formatting.</summary>
-    public int GetWidth()
+    public void ScrollToBottom()
     {
-        return _chatView.Frame.Width > 0 ? _chatView.Frame.Width - 1 : 80;
+        Application.Invoke(() =>
+        {
+            _scrollView.ScrollDown(_scrollView.GetContentSize().Height);
+        });
     }
 
     private void ScrollChat(int delta)
     {
-        var row = _chatView.TopRow + delta;
-        if (row < 0) row = 0;
-        _chatView.TopRow = row;
+        var newOffset = _scrollView.ContentOffset with
+        {
+            Y = _scrollView.ContentOffset.Y - delta
+        };
+        _scrollView.ContentOffset = newOffset;
 
-        var totalLines = _chatBuffer.ToString().Split('\n').Length;
-        var viewHeight = _chatView.Frame.Height;
-        _autoScroll = row >= totalLines - viewHeight - 2;
+        var contentHeight = _scrollView.GetContentSize().Height;
+        var viewportHeight = _scrollView.Frame.Height;
+        var offset = -_scrollView.ContentOffset.Y;
+        _autoScroll = offset >= contentHeight - viewportHeight - 2;
     }
 
     private void OnInputAccepting(object? sender, EventArgs e)
     {
         var text = _inputField.Text?.Trim() ?? "";
-        if (string.IsNullOrEmpty(text))
-            return;
+        if (string.IsNullOrEmpty(text)) return;
 
         if (_history.Count == 0 || _history[^1] != text)
             _history.Add(text);
         _historyIndex = -1;
-
         _inputField.Text = "";
 
         if (text.StartsWith(":"))

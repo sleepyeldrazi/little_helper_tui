@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text;
+using LittleHelperTui.Views;
 using Terminal.Gui;
 
 namespace LittleHelperTui;
@@ -102,6 +103,7 @@ public static class SkillBrowser
             Title = "Select Skill";
             Width = Dim.Percent(60);
             Height = Dim.Percent(70);
+            ColorScheme = DarkColors.Dialog;
 
             // List view
             _listView = new ListView

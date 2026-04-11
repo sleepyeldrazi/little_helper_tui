@@ -14,12 +14,20 @@ class Program
 
         Application.Init();
 
+        // Set dark color scheme globally
+        if (Colors.ColorSchemes.TryGetValue("Toplevel", out var topScheme))
+            Colors.ColorSchemes["Toplevel"] = DarkColors.Base;
+        if (Colors.ColorSchemes.TryGetValue("Base", out var baseScheme))
+            Colors.ColorSchemes["Base"] = DarkColors.Base;
+        if (Colors.ColorSchemes.TryGetValue("Dialog", out var dlgScheme))
+            Colors.ColorSchemes["Dialog"] = DarkColors.Dialog;
+
         try
         {
-            // Resolve model — matches old startup flow exactly:
+            // Resolve model — matches old startup flow:
             // 1. Check tui.json default_model, then models.json default_model
-            // 2. If no providers configured → manual entry
-            // 3. Otherwise → provider selection picker
+            // 2. If no providers configured → EndpointSetup (provider picker)
+            // 3. Otherwise → model selection picker
             var modelConfig = ModelConfig.Load();
             var hasConfiguredProviders = modelConfig.Providers.Count > 0;
             var defaultModel = config.DefaultModel ?? modelConfig.DefaultModel;
@@ -30,13 +38,14 @@ class Program
             {
                 resolved = modelConfig.Resolve(defaultModel);
                 if (resolved == null && !hasConfiguredProviders)
-                    resolved = ShowManualEntry();
+                    resolved = ShowEndpointSetup();
                 else if (resolved == null)
                     resolved = ShowModelSelection();
             }
             else if (!hasConfiguredProviders)
             {
-                resolved = ShowManualEntry();
+                // First run — show provider setup (like old EndpointSetup)
+                resolved = ShowEndpointSetup();
             }
             else
             {
@@ -55,11 +64,11 @@ class Program
             controller.SetMainWindow(mainWindow);
             controller.SetModel(resolved);
 
-            // Show welcome banner (plain text, like old FigletText + info)
-            mainWindow.AppendLine("little helper");
-            mainWindow.AppendLine($"Using {resolved.ModelId} ({resolved.BaseUrl})");
-            mainWindow.AppendLine("Hint: use :help for the command list");
-            mainWindow.AppendLine();
+            // Show welcome banner (dim, like old Spectre)
+            mainWindow.AddColoredBlock("little helper", DarkColors.Assistant);
+            mainWindow.AddColoredBlock($"Using {resolved.ModelId} ({resolved.BaseUrl})", DarkColors.Dim);
+            mainWindow.AddColoredBlock("Hint: use :help for the command list", DarkColors.Dim);
+            mainWindow.AddColoredBlock("", DarkColors.Base);
 
             Application.Run(mainWindow);
             return 0;
@@ -70,7 +79,15 @@ class Program
         }
     }
 
-    /// <summary>Show provider/model picker dialog. Returns to manual entry if requested.</summary>
+    /// <summary>Show provider setup dialog (first run, no providers configured).</summary>
+    private static ResolvedModel? ShowEndpointSetup()
+    {
+        var dialog = new EndpointSetupDialog();
+        Application.Run(dialog);
+        return dialog.Result;
+    }
+
+    /// <summary>Show model picker. Loops back if manual entry is cancelled.</summary>
     private static ResolvedModel? ShowModelSelection()
     {
         while (true)
@@ -80,20 +97,13 @@ class Program
 
             if (dialog.ShowManualEntry)
             {
-                var result = ShowManualEntry();
-                if (result != null) return result;
-                continue; // back to picker if manual was cancelled
+                var manual = new ManualModelDialog();
+                Application.Run(manual);
+                if (manual.Result != null) return manual.Result;
+                continue;
             }
 
             return dialog.SelectedModel;
         }
-    }
-
-    /// <summary>Show manual endpoint/model/apikey entry dialog.</summary>
-    private static ResolvedModel? ShowManualEntry()
-    {
-        var dialog = new ManualModelDialog();
-        Application.Run(dialog);
-        return dialog.Result;
     }
 }
