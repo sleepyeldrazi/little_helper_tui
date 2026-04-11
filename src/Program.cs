@@ -41,16 +41,15 @@ class Program
 
         var console = AnsiConsole.Console;
 
+        // Enter alternate screen buffer early — everything below lives in it
+        EnterAlternateScreen();
+        Console.Out.Flush();
+        _lastConsoleWidth = Console.WindowWidth;
+
         // Initialize git checkpoint service
         _gitCheckpoint = new GitCheckpoint(
             Directory.GetCurrentDirectory(), _tuiConfig.GitCheckpoint, console);
         _gitCheckpoint.EnsureInitialized();
-
-        console.Write(new FigletText("little helper")
-            .LeftJustified()
-            .Color(Color.Blue));
-        console.MarkupLine("[dim]Terminal UI v0.1.0[/]");
-        console.WriteLine();
 
         // Use default model from config if set, otherwise prompt
         ResolvedModel? resolved;
@@ -62,11 +61,9 @@ class Program
         if (!string.IsNullOrEmpty(defaultModel))
         {
             resolved = modelConfig.Resolve(defaultModel);
-            if (resolved != null)
-                console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim]({resolved.BaseUrl})[/]");
-            else if (!hasConfiguredProviders)
+            if (resolved == null && !hasConfiguredProviders)
                 resolved = EndpointSetup.Run(console);
-            else
+            else if (resolved == null)
                 resolved = ModelSelector.Select(console);
         }
         else if (!hasConfiguredProviders)
@@ -80,9 +77,17 @@ class Program
         }
         if (resolved == null)
         {
-            console.MarkupLine("[red]No model selected. Exiting.[/]");
+            LeaveAlternateScreen();
             return 1;
         }
+
+        // Show banner + model info (now inside alt buffer, survives)
+        console.Write(new FigletText("little helper")
+            .LeftJustified()
+            .Color(Color.Blue));
+        console.MarkupLine("[dim]Terminal UI v0.1.0[/]");
+        console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim]({resolved.BaseUrl})[/]");
+        console.WriteLine();
 
         var workingDir = Directory.GetCurrentDirectory();
         var modelId = resolved.ModelId;
@@ -91,11 +96,6 @@ class Program
             e.Cancel = true;
             console.MarkupLine("[yellow]Use :quit to exit.[/]");
         };
-
-        // Enter alternate screen buffer — preserves user's terminal history
-        EnterAlternateScreen();
-        Console.Out.Flush();
-        _lastConsoleWidth = Console.WindowWidth;
 
         // Ensure we leave alternate buffer on any exit path
         AppDomain.CurrentDomain.ProcessExit += (_, _) => LeaveAlternateScreen();
