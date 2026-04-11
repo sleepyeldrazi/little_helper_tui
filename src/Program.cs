@@ -52,15 +52,15 @@ class Program
     /// <summary>Check for scroll input (mouse wheel or Alt+arrows) and apply scrolling.</summary>
     private static void CheckScroll(TuiObserver observer, IAnsiConsole console)
     {
-        var scroll = InputHandler.TryReadScrollAction();
+        var scroll = InputHandler.GetPendingScroll();
         if (scroll == ScrollAction.Up)
         {
-            observer.ScrollUp(5);  // scroll up by 5 render actions
+            observer.ScrollUp(5);
             observer.Redraw(console);
         }
         else if (scroll == ScrollAction.Down)
         {
-            observer.ScrollDown(5);  // scroll down by 5 render actions
+            observer.ScrollDown(5);
             observer.Redraw(console);
         }
     }
@@ -144,8 +144,8 @@ class Program
             }
             else
             {
-                // Clean exit - disable mouse, leave alt buffer
-                Console.Write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+                // Clean exit
+                InputHandler.StopInputThread();
                 LeaveAlternateScreen();
                 Environment.Exit(0);
             }
@@ -154,10 +154,12 @@ class Program
         // Ensure we leave alternate buffer and restore terminal on any exit path
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
-            // Disable mouse reporting first
-            Console.Write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+            InputHandler.StopInputThread();
             LeaveAlternateScreen();
         };
+
+        // Start the background input thread
+        InputHandler.StartInputThread();
 
         var observer = new TuiObserver(_tuiConfig);
         Agent? agent = null;
