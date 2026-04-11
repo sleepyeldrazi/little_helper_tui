@@ -67,7 +67,8 @@ public class TerminalGuiObserver : IAgentObserver
 
     public void OnModelResponse(ModelResponse response, int step)
     {
-        TotalTokens += response.TokensUsed;
+        // Track current tokens (not cumulative) - server already includes full context in each response
+        TotalTokens = response.TokensUsed;
         TotalThinkingTokens += response.ThinkingTokens;
         _isStreaming = false;
 
