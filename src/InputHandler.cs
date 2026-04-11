@@ -23,6 +23,7 @@ public static class InputHandler
         var buf = new StringBuilder();
         int cursor = 0; // position within buf
         int prevRenderedLines = 1; // track how many lines we're occupying
+        bool inBracketPaste = false; // track \x1b[200~ ... \x1b[201~ paste mode
 
         Console.Write($"\u001b[1m{prompt}\u001b[0m ");
         var promptLen = prompt.Length + 1; // visible width of "> "
@@ -31,10 +32,58 @@ public static class InputHandler
         {
             var key = Console.ReadKey(true);
 
+            // Detect bracket paste start/end sequences
+            // Terminals send \x1b[200~ before pasted content and \x1b[201~ after
+            if (key.Key == ConsoleKey.Escape)
+            {
+                // Peek ahead to see if this is a bracket paste sequence
+                if (Console.KeyAvailable)
+                {
+                    var next = Console.ReadKey(true);
+                    if (next.KeyChar == '[')
+                    {
+                        // Read the sequence: "200~" or "201~"
+                        var seq = new StringBuilder();
+                        while (Console.KeyAvailable)
+                        {
+                            var ch = Console.ReadKey(true);
+                            if (ch.KeyChar == '~') break;
+                            seq.Append(ch.KeyChar);
+                        }
+                        var seqStr = seq.ToString();
+                        if (seqStr == "200")
+                        {
+                            inBracketPaste = true;
+                            continue;
+                        }
+                        if (seqStr == "201")
+                        {
+                            inBracketPaste = false;
+                            continue;
+                        }
+                        // Unknown escape sequence — ignore
+                        continue;
+                    }
+                }
+                // Plain Escape — clear line
+                ClearLine(buf, cursor, promptLen, prevRenderedLines);
+                buf.Clear();
+                cursor = 0;
+                prevRenderedLines = 1;
+                continue;
+            }
+
             switch (key)
             {
                 // --- Submit / Cancel ---
                 case { Key: ConsoleKey.Enter }:
+                    if (inBracketPaste)
+                    {
+                        // In bracket paste: treat newline as literal \n
+                        buf.Insert(cursor, '\n');
+                        cursor++;
+                        break;
+                    }
                     Console.WriteLine();
                     var line = buf.ToString();
                     if (!string.IsNullOrEmpty(line))
@@ -47,13 +96,6 @@ public static class InputHandler
                     LastRenderedLineCount = prevRenderedLines;
                     return line;
 
-                case { Key: ConsoleKey.Escape }:
-                    ClearLine(buf, cursor, promptLen, prevRenderedLines);
-                    buf.Clear();
-                    cursor = 0;
-                    prevRenderedLines = 1;
-                    break;
-
                 case { Key: ConsoleKey.C, Modifiers: ConsoleModifiers.Control }:
                 case { Key: ConsoleKey.D, Modifiers: ConsoleModifiers.Control }:
                     Console.WriteLine();
@@ -63,7 +105,6 @@ public static class InputHandler
                 // --- Cursor movement ---
                 case { Key: ConsoleKey.LeftArrow }:
                     if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
-                        // Ctrl+Left: jump back one word
                         cursor = JumpWordBack(buf, cursor);
                     else if (cursor > 0)
                         cursor--;
@@ -71,7 +112,6 @@ public static class InputHandler
 
                 case { Key: ConsoleKey.RightArrow }:
                     if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
-                        // Ctrl+Right: jump forward one word
                         cursor = JumpWordForward(buf, cursor);
                     else if (cursor < buf.Length)
                         cursor++;
@@ -91,7 +131,6 @@ public static class InputHandler
                 case { Key: ConsoleKey.Backspace }:
                     if (key.Modifiers.HasFlag(ConsoleModifiers.Control))
                     {
-                        // Ctrl+W: delete word back
                         var newCursor = JumpWordBack(buf, cursor);
                         buf.Remove(newCursor, cursor - newCursor);
                         cursor = newCursor;
@@ -109,13 +148,11 @@ public static class InputHandler
                     break;
 
                 case { Key: ConsoleKey.U, Modifiers: ConsoleModifiers.Control }:
-                    // Ctrl+U: clear line before cursor
                     buf.Remove(0, cursor);
                     cursor = 0;
                     break;
 
                 case { Key: ConsoleKey.K, Modifiers: ConsoleModifiers.Control }:
-                    // Ctrl+K: clear line after cursor
                     buf.Remove(cursor, buf.Length - cursor);
                     break;
 
@@ -124,7 +161,6 @@ public static class InputHandler
                     var (completed, options) = TabComplete(buf.ToString(), cursor);
                     if (options != null && options.Count > 1)
                     {
-                        // Multiple matches: show options, keep buffer
                         Console.WriteLine();
                         var display = string.Join("  ", options.Take(20).Select(Path.GetFileName));
                         console.MarkupLine($"[dim]{Markup.Escape(display)}[/]");

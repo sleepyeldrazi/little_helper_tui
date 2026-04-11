@@ -12,8 +12,10 @@ class Program
     private static int _lastConsoleWidth = Console.WindowWidth;
 
     // Alternate screen buffer: preserves user's terminal history on exit
-    private const string EnterAltBuffer = "\x1b[?1049h";
-    private const string LeaveAltBuffer = "\x1b[?1049l";
+    // ?1047h = switch to alt buffer (keeps scrollback), ?1049h = switch + clear
+    // We use 1047 so the alt buffer has scrollback, plus clear manually
+    private const string EnterAltBuffer = "\x1b[?1047h\x1b[H\x1b[2J";
+    private const string LeaveAltBuffer = "\x1b[?1047l";
 
     private static void EnterAlternateScreen() => Console.Write(EnterAltBuffer);
     private static void LeaveAlternateScreen() => Console.Write(LeaveAltBuffer);
@@ -52,13 +54,26 @@ class Program
 
         // Use default model from config if set, otherwise prompt
         ResolvedModel? resolved;
+        var modelConfig = ModelConfig.Load();
+        var hasConfiguredProviders = modelConfig.Providers.Any(p =>
+            !string.IsNullOrEmpty(p.Value.ApiKey) ||
+            p.Value.BaseUrl.Contains("localhost") ||
+            p.Value.BaseUrl.Contains("127.0.0.1"));
+
         if (!string.IsNullOrEmpty(_tuiConfig.DefaultModel))
         {
-            resolved = ModelConfig.Load().Resolve(_tuiConfig.DefaultModel);
+            resolved = modelConfig.Resolve(_tuiConfig.DefaultModel);
             if (resolved != null)
                 console.MarkupLine($"[green]Using {resolved.ModelId}[/] [dim](from tui.json)[/]");
+            else if (!hasConfiguredProviders)
+                resolved = EndpointSetup.Run(console);
             else
                 resolved = ModelSelector.Select(console);
+        }
+        else if (!hasConfiguredProviders)
+        {
+            // First run with no providers — show setup menu
+            resolved = EndpointSetup.Run(console);
         }
         else
         {
