@@ -10,6 +10,7 @@ namespace LittleHelperTui.Dialogs;
 public class ModelSelectionDialog : Dialog
 {
     public ResolvedModel? SelectedModel { get; private set; }
+    public bool ShowManualEntry { get; private set; }
 
     private ListView _listView;
     private List<SelectionItem> _items = new();
@@ -58,14 +59,17 @@ public class ModelSelectionDialog : Dialog
         var manualButton = new Button { Title = "Manual" };
         manualButton.Accept += (s, e) =>
         {
-            OnManual();
+            ShowManualEntry = true;
+            // Don't call RequestStop - let the dialog close naturally
+            // The caller will check ShowManualEntry and show manual dialog
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
         var cancelButton = new Button { Title = "Cancel" };
         cancelButton.Accept += (s, e) =>
         {
-            Application.RequestStop();
+            SelectedModel = null;
+            ShowManualEntry = false;
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
@@ -98,7 +102,7 @@ public class ModelSelectionDialog : Dialog
                 unconfigured.Add(item);
         }
 
-        // Add configured first
+        // Add configured first (local models at top)
         _items.AddRange(configured);
 
         // Separator for unconfigured
@@ -121,27 +125,14 @@ public class ModelSelectionDialog : Dialog
 
         if (string.IsNullOrEmpty(item.ModelId))
         {
-            // Manual entry
-            OnManual();
+            // Manual entry selected from list
+            ShowManualEntry = true;
             return;
         }
 
         var config = ModelConfig.Load();
         SelectedModel = config.Resolve(item.ModelId);
-        Application.RequestStop();
-    }
-
-    private void OnManual()
-    {
-        var manualDialog = new ManualModelDialog();
-        
-        // Run the dialog modally
-        Application.Run(manualDialog);
-        if (manualDialog.Result != null)
-        {
-            SelectedModel = manualDialog.Result;
-            Application.RequestStop();
-        }
+        ShowManualEntry = false;
     }
 
     private class SelectionItem
@@ -250,7 +241,7 @@ public class ManualModelDialog : Dialog
         var cancelButton = new Button { Title = "Cancel" };
         cancelButton.Accept += (s, e) =>
         {
-            Application.RequestStop();
+            Result = null;
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
@@ -279,7 +270,5 @@ public class ManualModelDialog : Dialog
             apiKey,
             32768, // Default context window
             0.3);
-
-        Application.RequestStop();
     }
 }
