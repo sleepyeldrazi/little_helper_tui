@@ -339,7 +339,14 @@ public class MainWindow : Window
         if (string.IsNullOrEmpty(text)) return;
 
         // Find the partial path at cursor position
-        var cursorPos = _inputView.CursorPosition;
+        // TextView.CursorPosition is a Point (column, line), extract position
+        var cursorPoint = _inputView.CursorPosition;
+        var lines = text.Split('\n');
+        var lineIndex = Math.Min(cursorPoint.Y, lines.Length - 1);
+        var colIndex = Math.Min(cursorPoint.X, lines[lineIndex].Length);
+        
+        // Calculate absolute position in text
+        var cursorPos = lines.Take(lineIndex).Sum(l => l.Length + 1) + colIndex;
         var beforeCursor = text[..Math.Min(cursorPos, text.Length)];
         
         // Find the start of the current word (path)
@@ -409,7 +416,8 @@ public class MainWindow : Window
 
                 var newText = beforeCursor[..wordStart] + completion + text[cursorPos..];
                 _inputView.Text = newText;
-                _inputView.CursorPosition = wordStart + completion.Length;
+                // Set cursor to end of completion (on same line for simplicity)
+                _inputView.CursorPosition = new System.Drawing.Point(wordStart + completion.Length, cursorPoint.Y);
             }
             else
             {
@@ -420,12 +428,12 @@ public class MainWindow : Window
                     // Complete to common prefix
                     var newText = beforeCursor[..wordStart] + commonPrefix + text[cursorPos..];
                     _inputView.Text = newText;
-                    _inputView.CursorPosition = wordStart + commonPrefix.Length;
+                    _inputView.CursorPosition = new System.Drawing.Point(wordStart + commonPrefix.Length, cursorPoint.Y);
                 }
                 else
                 {
                     // Show options
-                    _controller.ShowCompletions(entries.Select(Path.GetFileName).ToList());
+                    _controller.ShowCompletions(entries.Select(e => Path.GetFileName(e) ?? e).ToList());
                 }
             }
         }
