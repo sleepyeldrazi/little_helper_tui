@@ -76,7 +76,6 @@ public class TuiController
         var cts = _currentCts;
         var sw = Stopwatch.StartNew();
 
-        _mainWindow.SetStatus($"Running {_model.ModelId}...");
         _mainWindow.InputField.Enabled = false;
 
         try
@@ -126,17 +125,17 @@ public class TuiController
                     DiffViewer.ShowLastDiff(_mainWindow, lastFile);
             }
 
-            _mainWindow.SetStatus($"Done - {result.FilesChanged.Count} files changed");
+            // no-op: status shown inline by observer
         }
         catch (OperationCanceledException)
         {
             _mainWindow.AppendLine("Cancelled.");
-            _mainWindow.SetStatus("Cancelled");
+            // _mainWindow.SetStatus("Cancelled");
         }
         catch (Exception ex)
         {
             _mainWindow.AppendLine($"Error: {ex.Message}");
-            _mainWindow.SetStatus("Error");
+            // _mainWindow.SetStatus("Error");
         }
         finally
         {
@@ -272,7 +271,7 @@ public class TuiController
             _agent = null;
             _observer?.Reset();
             _mainWindow.AppendLine($"Switched to {newModel.ModelId}");
-            _mainWindow.SetStatus($"Model: {newModel.ModelId}");
+            // _mainWindow.SetStatus($"Model: {newModel.ModelId}");
         }
     }
 

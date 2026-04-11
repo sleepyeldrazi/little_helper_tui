@@ -1,18 +1,17 @@
-using System.ComponentModel;
 using System.Text;
 using Terminal.Gui;
 
 namespace LittleHelperTui.Views;
 
 /// <summary>
-/// Main application window. Chat output is a scrollable TextView (read-only).
-/// Input is a TextField at the bottom. Status bar shows model/step info.
+/// Main application window. No visible border/chrome — acts as a full-screen container.
+/// Chat output is a scrollable read-only TextView. Input is a TextField at the bottom.
+/// Matches the old Spectre UI: just text filling the screen.
 /// </summary>
 public class MainWindow : Window
 {
     private readonly TextView _chatView;
     private readonly TextField _inputField;
-    private readonly Label _statusLabel;
     private readonly TuiController _controller;
     private readonly StringBuilder _chatBuffer = new();
     private bool _autoScroll = true;
@@ -27,45 +26,46 @@ public class MainWindow : Window
     public MainWindow(TuiController controller)
     {
         _controller = controller;
-        Title = "little helper";
+
+        // No border/title — match old full-screen Spectre look
+        Title = "";
+        BorderStyle = LineStyle.None;
         X = 0;
         Y = 0;
         Width = Dim.Fill();
         Height = Dim.Fill();
 
-        // Chat output: read-only text view filling most of the window
+        // Chat output: read-only text view filling the screen
         _chatView = new TextView
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Fill(2), // leave room for input + status
+            Height = Dim.Fill(1), // leave 1 row for input
             ReadOnly = true,
             WordWrap = true,
             Text = ""
         };
 
-        // Input field at bottom
+        // Input field at bottom (acts as the > prompt)
         _inputField = new TextField
         {
-            X = 0,
-            Y = Pos.AnchorEnd(2),
+            X = 2,
+            Y = Pos.AnchorEnd(1),
             Width = Dim.Fill(),
             Height = 1,
             Text = ""
         };
 
-        // Status bar at very bottom
-        _statusLabel = new Label
+        // ">" prompt label
+        var promptLabel = new Label
         {
             X = 0,
             Y = Pos.AnchorEnd(1),
-            Width = Dim.Fill(),
-            Height = 1,
-            Text = "Ready"
+            Text = "> "
         };
 
-        Add(_chatView, _inputField, _statusLabel);
+        Add(_chatView, promptLabel, _inputField);
 
         // Wire up events
         _inputField.Accept += OnInputAccepting;
@@ -97,15 +97,15 @@ public class MainWindow : Window
         _inputField.SetFocus();
     }
 
-    /// <summary>Set the status bar text.</summary>
+    /// <summary>Set the status in the window title (minimal, no status bar).</summary>
     public void SetStatus(string text)
     {
-        Application.Invoke(() => { _statusLabel.Text = text; });
+        // No-op — old UI didn't have a persistent status bar.
+        // Status is shown inline in the chat via observer.
     }
 
     /// <summary>
-    /// Append text to the chat output. This is the primary rendering method.
-    /// All message formatting happens in the observer/controller — this just appends raw text.
+    /// Append text to the chat output. All formatting happens in the caller.
     /// </summary>
     public void AppendText(string text)
     {
@@ -115,10 +115,7 @@ public class MainWindow : Window
             _chatView.Text = _chatBuffer.ToString();
 
             if (_autoScroll)
-            {
-                // Move cursor to end to auto-scroll
                 _chatView.MoveEnd();
-            }
         });
     }
 
@@ -139,14 +136,18 @@ public class MainWindow : Window
         });
     }
 
+    /// <summary>Get the current terminal width for panel formatting.</summary>
+    public int GetWidth()
+    {
+        return _chatView.Frame.Width > 0 ? _chatView.Frame.Width - 1 : 80;
+    }
+
     private void ScrollChat(int delta)
     {
-        // Positive delta = down, negative = up
         var row = _chatView.TopRow + delta;
         if (row < 0) row = 0;
         _chatView.TopRow = row;
 
-        // Disable auto-scroll if user scrolled up
         var totalLines = _chatBuffer.ToString().Split('\n').Length;
         var viewHeight = _chatView.Frame.Height;
         _autoScroll = row >= totalLines - viewHeight - 2;
@@ -158,21 +159,18 @@ public class MainWindow : Window
         if (string.IsNullOrEmpty(text))
             return;
 
-        // Add to history
         if (_history.Count == 0 || _history[^1] != text)
             _history.Add(text);
         _historyIndex = -1;
 
-        // Clear input
         _inputField.Text = "";
 
-        // Handle command or prompt
         if (text.StartsWith(":"))
             _controller.ExecuteCommand(text);
         else
             _controller.SubmitPrompt(text);
 
-        if (e is HandledEventArgs handled)
+        if (e is System.ComponentModel.HandledEventArgs handled)
             handled.Handled = true;
     }
 
@@ -180,7 +178,7 @@ public class MainWindow : Window
     {
         if (_history.Count == 0) return;
 
-        if (direction < 0) // Up (older)
+        if (direction < 0)
         {
             if (_historyIndex == -1)
             {
@@ -188,12 +186,10 @@ public class MainWindow : Window
                 _historyIndex = _history.Count - 1;
             }
             else if (_historyIndex > 0)
-            {
                 _historyIndex--;
-            }
             _inputField.Text = _history[_historyIndex];
         }
-        else // Down (newer)
+        else
         {
             if (_historyIndex >= 0)
             {
