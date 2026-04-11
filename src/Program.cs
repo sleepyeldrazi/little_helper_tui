@@ -10,6 +10,7 @@ class Program
     private static TuiConfig _tuiConfig = new();
     private static GitCheckpoint? _gitCheckpoint;
     private static int _lastConsoleWidth = Console.WindowWidth;
+    private static bool _yoloMode = false;  // Allow writes outside working directory
 
     // Alternate screen buffer: preserves user's terminal history on exit
     // ?1047h = switch to alt buffer (keeps scrollback) — works on most modern terminals
@@ -45,6 +46,9 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
+        // Parse --yolo flag
+        _yoloMode = args.Contains("--yolo") || args.Contains("-y");
+
         _tuiConfig = TuiConfig.Load();
 
         var console = AnsiConsole.Console;
@@ -119,7 +123,7 @@ class Program
         SessionLogger? logger = null;
 
         // Helper to create/recreate the agent when model changes or on reset
-        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer, _tuiConfig, logger);
+        Agent CreateAgent() => ClientFactory.CreateAgent(resolved!, workingDir, observer, _tuiConfig, logger, _yoloMode);
 
         while (true)
         {
@@ -469,6 +473,13 @@ class Program
                 console.MarkupLine("[dim]Conversation reset.[/]");
                 return new CmdHandleResult(CmdResult.Reset, ResetAgent: true, DisposeLogger: true);
 
+            case ":yolo":
+                _yoloMode = !_yoloMode;
+                var status = _yoloMode ? "[green]enabled[/]" : "[dim]disabled[/]";
+                console.MarkupLine($"Yolo mode {status}. Agent can now write outside working directory.");
+                // Recreate agent with new yolo setting
+                return new CmdHandleResult(CmdResult.Reset, ResetAgent: true, DisposeLogger: false);
+
             case ":help":
                 console.MarkupLine("[bold]Commands:[/]");
                 console.MarkupLine($"  [blue]:model[/] {Markup.Escape("[name]")}   Switch model");
@@ -481,11 +492,13 @@ class Program
                 console.MarkupLine("  [blue]:arena[/]          A/B test two models side-by-side");
                 console.MarkupLine("  [blue]:config[/]         Show TUI config");
                 console.MarkupLine("  [blue]:reset[/]          Reset conversation");
+                console.MarkupLine("  [blue]:yolo[/]           Toggle write-outside-workdir mode");
                 console.MarkupLine("  [blue]:help[/]           Show this help");
                 console.MarkupLine("  [blue]:hide[/]           Drop to shell, return with 'exit'");
                 console.MarkupLine("  [blue]:quit[/]           Exit");
                 console.WriteLine();
                 console.MarkupLine("[dim]During agent run: Ctrl+C = cancel[/]");
+                console.MarkupLine("[dim]Start with --yolo to enable write-outside-workdir from the start[/]");
                 return new CmdHandleResult(CmdResult.Continue);
 
             default:

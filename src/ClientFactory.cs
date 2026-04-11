@@ -14,7 +14,7 @@ public static class ClientFactory
     /// Routes to AnthropicClient for api_type "anthropic", ModelClient otherwise.
     /// </summary>
     public static (IModelClient client, ToolExecutor tools) Create(
-        ResolvedModel resolved, string workingDir)
+        ResolvedModel resolved, string workingDir, bool allowEscape = false)
     {
         IModelClient client;
 
@@ -42,7 +42,7 @@ public static class ClientFactory
         if (resolved.ToolsEnabled != false)
             ToolSchemas.RegisterAll(client, resolved.ContextWindow, resolved.ModelId);
 
-        var tools = new ToolExecutor(workingDir, blockDestructive: false);
+        var tools = new ToolExecutor(workingDir, blockDestructive: false, allowEscape: allowEscape);
 
         // Wire up SpawnManager for sub-agent spawning via tmux
         tools.SpawnManager = new SpawnManager();
@@ -55,9 +55,9 @@ public static class ClientFactory
     /// Config values (MaxSteps, EnableStreaming) come from TuiConfig.
     /// </summary>
     public static Agent CreateAgent(ResolvedModel resolved, string workingDir,
-        TuiObserver observer, TuiConfig config, SessionLogger? logger = null)
+        TuiObserver observer, TuiConfig config, SessionLogger? logger = null, bool allowEscape = false)
     {
-        var (client, tools) = Create(resolved, workingDir);
+        var (client, tools) = Create(resolved, workingDir, allowEscape);
 
         var skills = new SkillDiscovery();
         skills.Discover(workingDir);
