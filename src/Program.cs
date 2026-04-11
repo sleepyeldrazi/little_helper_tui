@@ -27,15 +27,6 @@ class Program
         Application.Force16Colors = false;
         Application.Init();
 
-        // DEBUG: Log driver and color info
-        Console.WriteLine($"[DEBUG] Driver: {Application.Driver?.GetType().Name}");
-        Console.WriteLine($"[DEBUG] SupportsTrueColor: {Application.Driver?.SupportsTrueColor}");
-        Console.WriteLine($"[DEBUG] Force16Colors: {Application.Force16Colors}");
-        Console.WriteLine($"[DEBUG] COLORTERM: {Environment.GetEnvironmentVariable("COLORTERM")}");
-        Console.WriteLine($"[DEBUG] TERM: {Environment.GetEnvironmentVariable("TERM")}");
-        Console.WriteLine("Press any key to continue...");
-        Console.ReadKey(true);
-
         // Set dark color scheme globally for all built-in widget types
         var dark = DarkColors.Base;
         var dialog = DarkColors.Dialog;

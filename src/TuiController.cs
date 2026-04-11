@@ -412,7 +412,7 @@ public class TuiController
         _mainWindow?.AddColoredBlock("Conversation reset.");
     }
 
-    private void Cancel()
+    public void Cancel()
     {
         if (_currentCts != null && !_currentCts.IsCancellationRequested)
         {
