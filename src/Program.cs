@@ -310,7 +310,8 @@ class Program
                 var doneStep = observer.CurrentStep;
                 var doneMs = sw.ElapsedMilliseconds;
                 var doneResult = result2;
-                observer.Record(c => StatusBar.RenderDone(c, modelId, doneResult, doneStep, doneMs, observer));
+                var maxCtx = resolved!.ContextWindow;
+                observer.Record(c => StatusBar.RenderDone(c, modelId, doneResult, doneStep, doneMs, observer, maxCtx));
 
                 // Auto-show diffs if configured and files were changed
                 if (_tuiConfig.AutoShowDiffs && result2.FilesChanged.Count > 0)

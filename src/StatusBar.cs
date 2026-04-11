@@ -32,15 +32,16 @@ public static class StatusBar
     }
 
     public static void RenderDone(IAnsiConsole console, string modelName,
-        AgentResult result, int steps, long elapsedMs, TuiObserver observer)
+        AgentResult result, int steps, long elapsedMs, TuiObserver observer, int maxContext)
     {
         var icon = result.Success ? "[green]:check_mark:[/]" : "[red]:cross_mark:[/]";
         var context = FormatTokens(observer.TotalTokens);
         var thinking = FormatTokens(observer.TotalThinkingTokens);
+        var maxCtx = FormatTokens(maxContext);
         var elapsed = elapsedMs < 1000 ? $"{elapsedMs}ms" : $"{elapsedMs / 1000.0:F1}s";
 
         console.WriteLine();
-        console.MarkupLine($"{icon} [bold]Done[/] [dim]{steps} steps, {elapsed}, {context} context ({thinking} thinking)[/]");
+        console.MarkupLine($"{icon} [bold]Done[/] [dim]{steps} steps, {elapsed}, {context}/{maxCtx} context ({thinking} thinking)[/]");
 
         if (result.FilesChanged.Count > 0)
         {
