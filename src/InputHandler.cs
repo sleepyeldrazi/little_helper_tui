@@ -161,6 +161,11 @@ public static class InputHandler
                     var (completed, options) = TabComplete(buf.ToString(), cursor);
                     if (options != null && options.Count > 1)
                     {
+                        // Clear current input lines before showing options
+                        if (prevRenderedLines > 1)
+                            Console.Write($"\u001b[{prevRenderedLines - 1}A");
+                        Console.Write("\r\u001b[J");  // Clear from cursor to end of screen
+
                         Console.WriteLine();
                         var display = string.Join("  ", options.Take(20).Select(Path.GetFileName));
                         console.MarkupLine($"[dim]{Markup.Escape(display)}[/]");
@@ -168,6 +173,7 @@ public static class InputHandler
                             console.MarkupLine($"[dim]... and {options.Count - 20} more[/]");
                         Console.Write($"\u001b[1m{prompt}\u001b[0m ");
                         promptLen = prompt.Length + 1;
+                        prevRenderedLines = 1;  // Reset line count for redraw
                     }
                     else if (completed != null)
                     {
