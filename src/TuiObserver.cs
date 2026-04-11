@@ -304,12 +304,12 @@ public class TuiObserver : IAgentObserver
         // Show file stats
         console.MarkupLine($"  [dim]{lines.Length} lines[/]");
 
-        // Show first few lines
+        // Show first few lines — truncate raw text BEFORE escaping to avoid
+        // cutting mid-escape-sequence (e.g. [[ for literal [)
         foreach (var line in lines.Take(maxShow))
         {
-            var escaped = Markup.Escape(line);
-            if (escaped.Length > 120) escaped = escaped[..120] + "...";
-            console.MarkupLine($"  [dim]{escaped}[/]");
+            var truncated = line.Length > 120 ? line[..120] + "..." : line;
+            console.MarkupLine($"  [dim]{Markup.Escape(truncated)}[/]");
         }
 
         var remaining = lines.Length - maxShow;
@@ -329,9 +329,8 @@ public class TuiObserver : IAgentObserver
         var lines = output.Split('\n');
         foreach (var line in lines.Take(maxLines))
         {
-            var escaped = Markup.Escape(line);
-            if (escaped.Length > 120) escaped = escaped[..120] + "...";
-            console.MarkupLine($"  [dim]{escaped}[/]");
+            var truncated = line.Length > 120 ? line[..120] + "..." : line;
+            console.MarkupLine($"  [dim]{Markup.Escape(truncated)}[/]");
         }
 
         var remaining = lines.Length - maxLines;
