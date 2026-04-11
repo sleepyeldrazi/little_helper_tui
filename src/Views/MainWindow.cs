@@ -166,7 +166,7 @@ public class MainWindow : Window
                 case KeyCode.PageDown: ScrollChat(10); e.Handled = true; break;
                 case KeyCode.Tab: CompletePath(); e.Handled = true; break;
                 case KeyCode.C when e.IsCtrl && !e.IsShift: _controller.Cancel(); e.Handled = true; break;
-                case KeyCode.Enter when e.IsCtrl: SubmitInput(); e.Handled = true; break;
+                case KeyCode.Enter when !e.IsShift: SubmitInput(); e.Handled = true; break;
             }
         };
 

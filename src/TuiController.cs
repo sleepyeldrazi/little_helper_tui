@@ -486,7 +486,8 @@ public class TuiController
         HelpLine(":quit", "Exit");
         _mainWindow.AddColoredBlock("");
         _mainWindow.AddColoredBlock("Input keys:", DarkColors.Bold);
-        _mainWindow.AddColoredBlock("  Ctrl+Enter      Submit message");
+        _mainWindow.AddColoredBlock("  Enter           Submit message");
+        _mainWindow.AddColoredBlock("  Shift+Enter     New line");
         _mainWindow.AddColoredBlock("  Tab             Complete file path");
         _mainWindow.AddColoredBlock("  Ctrl+Up/Down    Navigate history");
         _mainWindow.AddColoredBlock("  Ctrl+C          Cancel during agent run");
