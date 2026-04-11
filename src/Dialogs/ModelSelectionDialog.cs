@@ -60,8 +60,7 @@ public class ModelSelectionDialog : Dialog
         manualButton.Accept += (s, e) =>
         {
             ShowManualEntry = true;
-            // Don't call RequestStop - let the dialog close naturally
-            // The caller will check ShowManualEntry and show manual dialog
+            Application.RequestStop(this);
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
@@ -70,6 +69,7 @@ public class ModelSelectionDialog : Dialog
         {
             SelectedModel = null;
             ShowManualEntry = false;
+            Application.RequestStop(this);
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
@@ -127,12 +127,14 @@ public class ModelSelectionDialog : Dialog
         {
             // Manual entry selected from list
             ShowManualEntry = true;
+            Application.RequestStop(this);
             return;
         }
 
         var config = ModelConfig.Load();
         SelectedModel = config.Resolve(item.ModelId);
         ShowManualEntry = false;
+        Application.RequestStop(this);
     }
 
     private class SelectionItem
@@ -235,6 +237,7 @@ public class ManualModelDialog : Dialog
         okButton.Accept += (s, e) =>
         {
             OnOk();
+            Application.RequestStop(this);
             if (e is HandledEventArgs he) he.Handled = true;
         };
 
@@ -242,6 +245,7 @@ public class ManualModelDialog : Dialog
         cancelButton.Accept += (s, e) =>
         {
             Result = null;
+            Application.RequestStop(this);
             if (e is HandledEventArgs he) he.Handled = true;
         };
 

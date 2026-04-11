@@ -44,7 +44,7 @@ public class TuiController
     public void SetMainWindow(MainWindow window)
     {
         _mainWindow = window;
-        _observer = new TerminalGuiObserver(window.ChatContent, _config);
+        _observer = new TerminalGuiObserver(window, _config);
         window.Observer = _observer;
     }
 
@@ -289,7 +289,17 @@ public class TuiController
         {
             var dialog = new ModelSelectionDialog();
             Application.Run(dialog);
-            newModel = dialog.SelectedModel;
+
+            if (dialog.ShowManualEntry)
+            {
+                var manualDialog = new ManualModelDialog();
+                Application.Run(manualDialog);
+                newModel = manualDialog.Result;
+            }
+            else
+            {
+                newModel = dialog.SelectedModel;
+            }
         }
         else
         {
@@ -330,9 +340,10 @@ public class TuiController
         {
             foreach (var msg in _agent.History)
             {
-                var content = msg.Content.Length > 100
-                    ? msg.Content[..100] + "..."
-                    : msg.Content;
+                var content = msg.Content ?? "";
+                if (content.Length > 100)
+                    content = content[..100] + "...";
+                content = content.Replace("\n", " ").Trim();
                 _observer?.AddUserMessage($"[{msg.Role}] {content}");
             }
         }
@@ -346,8 +357,8 @@ public class TuiController
     {
         if (!string.IsNullOrEmpty(arg) && int.TryParse(arg, out var sessionIdx))
         {
-            // Show specific session
-            var dialog = new SessionsDialog(sessionIdx);
+            // User provides 1-based index, convert to 0-based
+            var dialog = new SessionsDialog(sessionIdx - 1);
             Application.Run(dialog);
         }
         else

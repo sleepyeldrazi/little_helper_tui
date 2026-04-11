@@ -9,7 +9,7 @@ namespace LittleHelperTui.Dialogs;
 /// </summary>
 public class SessionsDialog : Dialog
 {
-    private ListView _listView;
+    private ListView? _listView;
     private List<SessionInfo> _sessions = new();
 
     public SessionsDialog(int? showSessionIdx = null)
@@ -62,7 +62,8 @@ public class SessionsDialog : Dialog
         {
             LoadSessions();
             var items = new System.Collections.ObjectModel.ObservableCollection<string>(_sessions.Select((s, i) => $"{i + 1}. {s.Model} - {s.Date:yyyy-MM-dd HH:mm}"));
-            _listView.Source = new ListWrapper<string>(items);
+            if (_listView != null)
+                _listView.Source = new ListWrapper<string>(items);
             if (e is HandledEventArgs he) he.Handled = true;
         };
 

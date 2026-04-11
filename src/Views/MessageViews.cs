@@ -3,6 +3,60 @@ using Terminal.Gui;
 namespace LittleHelperTui.Views;
 
 /// <summary>
+/// Shared color schemes for message views.
+/// </summary>
+internal static class ChatColors
+{
+    public static ColorScheme User => new()
+    {
+        Normal = new Terminal.Gui.Attribute(Color.Cyan, Color.Black),
+        Focus = new Terminal.Gui.Attribute(Color.Cyan, Color.Black),
+        HotNormal = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black),
+        HotFocus = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black)
+    };
+
+    public static ColorScheme Assistant => new()
+    {
+        Normal = new Terminal.Gui.Attribute(Color.White, Color.Black),
+        Focus = new Terminal.Gui.Attribute(Color.White, Color.Black),
+        HotNormal = new Terminal.Gui.Attribute(Color.BrightYellow, Color.Black),
+        HotFocus = new Terminal.Gui.Attribute(Color.BrightYellow, Color.Black)
+    };
+
+    public static ColorScheme Thinking => new()
+    {
+        Normal = new Terminal.Gui.Attribute(Color.DarkGray, Color.Black),
+        Focus = new Terminal.Gui.Attribute(Color.DarkGray, Color.Black),
+        HotNormal = new Terminal.Gui.Attribute(Color.Gray, Color.Black),
+        HotFocus = new Terminal.Gui.Attribute(Color.Gray, Color.Black)
+    };
+
+    public static ColorScheme ToolSuccess => new()
+    {
+        Normal = new Terminal.Gui.Attribute(Color.Green, Color.Black),
+        Focus = new Terminal.Gui.Attribute(Color.Green, Color.Black),
+        HotNormal = new Terminal.Gui.Attribute(Color.BrightGreen, Color.Black),
+        HotFocus = new Terminal.Gui.Attribute(Color.BrightGreen, Color.Black)
+    };
+
+    public static ColorScheme ToolError => new()
+    {
+        Normal = new Terminal.Gui.Attribute(Color.Red, Color.Black),
+        Focus = new Terminal.Gui.Attribute(Color.Red, Color.Black),
+        HotNormal = new Terminal.Gui.Attribute(Color.BrightRed, Color.Black),
+        HotFocus = new Terminal.Gui.Attribute(Color.BrightRed, Color.Black)
+    };
+
+    public static ColorScheme Status => new()
+    {
+        Normal = new Terminal.Gui.Attribute(Color.Gray, Color.Black),
+        Focus = new Terminal.Gui.Attribute(Color.Gray, Color.Black),
+        HotNormal = new Terminal.Gui.Attribute(Color.White, Color.Black),
+        HotFocus = new Terminal.Gui.Attribute(Color.White, Color.Black)
+    };
+}
+
+/// <summary>
 /// User message view - displays user input in a bordered frame.
 /// </summary>
 public class UserMessageView : FrameView
@@ -14,6 +68,7 @@ public class UserMessageView : FrameView
         Content = content;
         Title = "You";
         BorderStyle = LineStyle.Double;
+        ColorScheme = ChatColors.User;
         Width = Dim.Fill();
         Height = Dim.Auto();
 
@@ -42,8 +97,9 @@ public class AssistantMessageView : FrameView
     {
         Step = step;
         TokensUsed = tokensUsed;
-        Title = $"Assistant Step {step}";
-        BorderStyle = LineStyle.Single;
+        Title = tokensUsed > 0 ? $"Assistant #{step} ({FormatTokens(tokensUsed)})" : $"Assistant #{step}";
+        BorderStyle = LineStyle.Rounded;
+        ColorScheme = ChatColors.Assistant;
         Width = Dim.Fill();
         Height = Dim.Auto();
 
@@ -58,10 +114,13 @@ public class AssistantMessageView : FrameView
 
         Add(label);
     }
+
+    private static string FormatTokens(int tokens) =>
+        tokens >= 1_000 ? $"{tokens / 1_000.0:F1}K" : $"{tokens}";
 }
 
 /// <summary>
-/// Thinking view - displays thinking content.
+/// Thinking view - displays thinking content in dimmed style.
 /// </summary>
 public class ThinkingView : FrameView
 {
@@ -72,8 +131,9 @@ public class ThinkingView : FrameView
     {
         ThinkingTokens = thinkingTokens;
         ContextTokens = contextTokens;
-        Title = "Thinking";
-        BorderStyle = LineStyle.Single;
+        Title = $"Thinking ({FormatTokens(thinkingTokens)})";
+        BorderStyle = LineStyle.Dashed;
+        ColorScheme = ChatColors.Thinking;
         Width = Dim.Fill();
         Height = Dim.Auto();
 
@@ -88,10 +148,13 @@ public class ThinkingView : FrameView
 
         Add(label);
     }
+
+    private static string FormatTokens(int tokens) =>
+        tokens >= 1_000 ? $"{tokens / 1_000.0:F1}K" : $"{tokens}";
 }
 
 /// <summary>
-/// Tool result view - displays tool execution results.
+/// Tool result view - displays tool execution results with color-coded status.
 /// </summary>
 public class ToolResultView : View
 {
@@ -106,6 +169,7 @@ public class ToolResultView : View
         Result = result;
         IsError = isError;
         DurationMs = durationMs;
+        ColorScheme = isError ? ChatColors.ToolError : ChatColors.ToolSuccess;
         Width = Dim.Fill();
         Height = Dim.Auto();
 
@@ -143,36 +207,23 @@ public class ToolResultView : View
 }
 
 /// <summary>
-/// Status view - displays completion status.
+/// Status view - displays completion status with compact summary.
 /// </summary>
 public class StatusView : View
 {
-    public bool Success { get; }
-    public int Steps { get; }
-    public long ElapsedMs { get; }
-    public int TotalTokens { get; }
-    public int ThinkingTokens { get; }
-    public int MaxContext { get; }
-    public int FilesChanged { get; }
-
     public StatusView(bool success, int steps, long elapsedMs, int totalTokens,
         int thinkingTokens, int maxContext, int filesChanged)
     {
-        Success = success;
-        Steps = steps;
-        ElapsedMs = elapsedMs;
-        TotalTokens = totalTokens;
-        ThinkingTokens = thinkingTokens;
-        MaxContext = maxContext;
-        FilesChanged = filesChanged;
+        ColorScheme = success ? ChatColors.ToolSuccess : ChatColors.ToolError;
         Width = Dim.Fill();
-        Height = FilesChanged > 0 ? 3 : 2;
+        Height = filesChanged > 0 ? 3 : 2;
 
-        var icon = Success ? "✓" : "✗";
+        var icon = success ? "✓" : "✗";
         var elapsed = elapsedMs < 1000 ? $"{elapsedMs}ms" : $"{elapsedMs / 1000.0:F1}s";
-        var stats = $"{icon} Done - {steps} steps, {elapsed}, {FormatTokens(TotalTokens)}/{FormatTokens(MaxContext)} context";
+        var pct = maxContext > 0 ? $" ({100 * totalTokens / maxContext}%)" : "";
+        var stats = $"{icon} {steps} steps, {elapsed}, {FormatTokens(totalTokens)}/{FormatTokens(maxContext)}{pct}";
         if (thinkingTokens > 0)
-            stats += $" ({FormatTokens(thinkingTokens)} thinking)";
+            stats += $" +{FormatTokens(thinkingTokens)} thinking";
 
         var statusLabel = new Label
         {
@@ -184,11 +235,11 @@ public class StatusView : View
 
         Add(statusLabel);
 
-        if (FilesChanged > 0)
+        if (filesChanged > 0)
         {
             var filesLabel = new Label
             {
-                Text = $"  {FilesChanged} files changed. Use :files to list.",
+                Text = $"  {filesChanged} files changed — :files to list, :diff to view",
                 Width = Dim.Fill(),
                 X = 0,
                 Y = 1
@@ -204,7 +255,7 @@ public class StatusView : View
 }
 
 /// <summary>
-/// Simple log message view for errors and system messages.
+/// Simple log message view for errors and system messages with level-based coloring.
 /// </summary>
 public class LogMessageView : Label
 {
@@ -216,16 +267,19 @@ public class LogMessageView : Label
         Text = message;
         Width = Dim.Fill();
 
-        var color = level switch
+        ColorScheme = level switch
         {
-            LogLevel.Error => Color.Red,
-            LogLevel.Warning => Color.Yellow,
-            LogLevel.Info => Color.Gray,
-            LogLevel.Success => Color.Green,
-            _ => Color.White
+            LogLevel.Error => ChatColors.ToolError,
+            LogLevel.Warning => new ColorScheme
+            {
+                Normal = new Terminal.Gui.Attribute(Color.Yellow, Color.Black),
+                Focus = new Terminal.Gui.Attribute(Color.Yellow, Color.Black),
+                HotNormal = new Terminal.Gui.Attribute(Color.BrightYellow, Color.Black),
+                HotFocus = new Terminal.Gui.Attribute(Color.BrightYellow, Color.Black)
+            },
+            LogLevel.Success => ChatColors.ToolSuccess,
+            _ => ChatColors.Status
         };
-
-        // Note: ColorScheme is set by the parent or application
     }
 }
 

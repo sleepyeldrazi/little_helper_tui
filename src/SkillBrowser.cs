@@ -23,14 +23,8 @@ public static class SkillBrowser
         }
 
         var dialog = new SkillSelectionDialog(skills);
-        
         Application.Run(dialog);
-        if (true)
-        {
-            return dialog.SelectedSkill?.Content;
-        }
-
-        return null;
+        return dialog.SelectedSkill?.Content;
     }
 
     private static List<SkillInfo> DiscoverSkills(string workingDir)

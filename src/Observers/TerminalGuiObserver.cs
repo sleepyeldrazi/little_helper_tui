@@ -11,7 +11,7 @@ namespace LittleHelperTui.Observers;
 /// </summary>
 public class TerminalGuiObserver : IAgentObserver
 {
-    private readonly View _chatContent;
+    private readonly MainWindow _mainWindow;
     private readonly TuiConfig _config;
     private readonly StringBuilder _streamingContent = new();
     private readonly StringBuilder _streamingThinking = new();
@@ -42,9 +42,9 @@ public class TerminalGuiObserver : IAgentObserver
         }
     }
 
-    public TerminalGuiObserver(View chatContent, TuiConfig? config = null)
+    public TerminalGuiObserver(MainWindow mainWindow, TuiConfig? config = null)
     {
-        _chatContent = chatContent;
+        _mainWindow = mainWindow;
         _config = config ?? new TuiConfig();
         _thinkingMode = _config.ThinkingMode;
         _maxToolOutputLines = _config.MaxToolOutputLines;
@@ -68,7 +68,13 @@ public class TerminalGuiObserver : IAgentObserver
     public void OnStepStart(int step)
     {
         CurrentStep = step;
+        InvokeOnMain(() => _mainWindow.SetStatus($"Step {step} | {FormatTokens(TotalTokens)} tokens"));
     }
+
+    private static string FormatTokens(int tokens) =>
+        tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:F1}M"
+        : tokens >= 1_000 ? $"{tokens / 1_000.0:F1}K"
+        : $"{tokens}";
 
     public void OnModelResponse(ModelResponse response, int step)
     {
@@ -257,12 +263,7 @@ public class TerminalGuiObserver : IAgentObserver
 
     private void AddView(View view)
     {
-        view.X = 0;
-        view.Y = _chatContent.Subviews.Count > 0 
-            ? Pos.Bottom(_chatContent.Subviews[^1]) 
-            : 0;
-        
-        _chatContent.Add(view);
+        _mainWindow.AddChatView(view);
     }
 
     private static string FormatToolArgs(string toolName, System.Text.Json.JsonElement args)

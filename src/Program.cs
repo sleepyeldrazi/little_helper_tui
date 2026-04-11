@@ -21,9 +21,40 @@ class Program
 
         try
         {
-            // Always show model selection dialog first
-            // This shows local models on top if configured
-            ResolvedModel? resolved = ShowModelSelection();
+            // Resolve model: respect defaults from tui.json and models.json,
+            // only show picker if no default is configured or resolution fails
+            var modelConfig = ModelConfig.Load();
+            var hasConfiguredProviders = modelConfig.Providers.Count > 0;
+
+            ResolvedModel? resolved = null;
+            var defaultModel = config.DefaultModel ?? modelConfig.DefaultModel;
+
+            if (!string.IsNullOrEmpty(defaultModel))
+            {
+                resolved = modelConfig.Resolve(defaultModel);
+                // If default didn't resolve and no providers, show manual entry
+                if (resolved == null && !hasConfiguredProviders)
+                {
+                    var manualDialog = new ManualModelDialog();
+                    Application.Run(manualDialog);
+                    resolved = manualDialog.Result;
+                }
+                else if (resolved == null)
+                {
+                    resolved = ShowModelSelection();
+                }
+            }
+            else if (!hasConfiguredProviders)
+            {
+                // First run with no providers — go straight to manual entry
+                var manualDialog = new ManualModelDialog();
+                Application.Run(manualDialog);
+                resolved = manualDialog.Result;
+            }
+            else
+            {
+                resolved = ShowModelSelection();
+            }
 
             if (resolved == null)
             {

@@ -9,10 +9,12 @@ namespace LittleHelperTui.Views;
 /// </summary>
 public class MainWindow : Window
 {
-    private View _chatContent;
-    private TextField _inputField;
-    private Label _statusLabel;
+    private ScrollView _scrollView = null!;
+    private View _chatContent = null!;
+    private TextField _inputField = null!;
+    private Label _statusLabel = null!;
     private TuiController _controller;
+    private bool _autoScroll = true;
 
     // Input history
     private readonly List<string> _history = new();
@@ -43,14 +45,24 @@ public class MainWindow : Window
         Width = Dim.Fill();
         Height = Dim.Fill();
 
-        // Chat content container (scrollable area)
+        // Inner content view that grows as messages are added
         _chatContent = new View
+        {
+            X = 0,
+            Y = 0,
+            Width = Dim.Fill(),
+            Height = Dim.Auto()
+        };
+
+        // ScrollView wrapping the content
+        _scrollView = new ScrollView
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(),
             Height = Dim.Fill() - 2 // Leave room for input + status
         };
+        _scrollView.Add(_chatContent);
 
         // Input field at bottom
         _inputField = new TextField
@@ -71,12 +83,35 @@ public class MainWindow : Window
             Text = "Ready"
         };
 
-        Add(_chatContent, _inputField, _statusLabel);
+        Add(_scrollView, _inputField, _statusLabel);
 
         // Wire up events
         _inputField.Accept += OnInputAccepting;
-        
-        // Handle key bindings for history
+
+        // Input history key bindings
+        _inputField.KeyDown += (s, e) =>
+        {
+            if (e.KeyCode == KeyCode.CursorUp)
+            {
+                NavigateHistory(-1);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == KeyCode.CursorDown)
+            {
+                NavigateHistory(1);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == KeyCode.PageUp)
+            {
+                ScrollChat(-10);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == KeyCode.PageDown)
+            {
+                ScrollChat(10);
+                e.Handled = true;
+            }
+        };
     }
 
     /// <summary>
@@ -158,16 +193,22 @@ public class MainWindow : Window
     }
 
     /// <summary>
-    /// Add a view to the chat content.
+    /// Add a view to the chat content and auto-scroll to bottom.
     /// </summary>
     public void AddChatView(View view)
     {
         view.X = 0;
-        view.Y = _chatContent.Subviews.Count > 0 
-            ? Pos.Bottom(_chatContent.Subviews[^1]) 
+        view.Y = _chatContent.Subviews.Count > 0
+            ? Pos.Bottom(_chatContent.Subviews[^1])
             : 0;
-        
+
         _chatContent.Add(view);
+
+        // Auto-scroll to bottom if user hasn't scrolled up
+        if (_autoScroll)
+        {
+            ScrollToBottom();
+        }
     }
 
     /// <summary>
@@ -179,5 +220,36 @@ public class MainWindow : Window
         {
             _chatContent.Remove(child);
         }
+        _autoScroll = true;
+    }
+
+    /// <summary>Scroll chat by delta lines (negative = up, positive = down).</summary>
+    private void ScrollChat(int delta)
+    {
+        var newOffset = _scrollView.ContentOffset with
+        {
+            Y = _scrollView.ContentOffset.Y - delta
+        };
+        _scrollView.ContentOffset = newOffset;
+
+        // If user scrolled up, disable auto-scroll; if at bottom, re-enable
+        _autoScroll = IsAtBottom();
+    }
+
+    /// <summary>Scroll to the bottom of the chat content.</summary>
+    public void ScrollToBottom()
+    {
+        Application.Invoke(() =>
+        {
+            _scrollView.ScrollDown(_scrollView.GetContentSize().Height);
+        });
+    }
+
+    private bool IsAtBottom()
+    {
+        var contentHeight = _scrollView.GetContentSize().Height;
+        var viewportHeight = _scrollView.Frame.Height;
+        var offset = -_scrollView.ContentOffset.Y;
+        return offset >= contentHeight - viewportHeight - 2;
     }
 }
