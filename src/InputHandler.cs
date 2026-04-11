@@ -126,6 +126,19 @@ public static class InputHandler
         }
     }
 
+    /// <summary>Flush any pending input from stdin.</summary>
+    public static void FlushInput()
+    {
+        try
+        {
+            while (Console.KeyAvailable)
+            {
+                Console.ReadKey(true);
+            }
+        }
+        catch { }
+    }
+
     /// <summary>Queue a scroll action from mouse/key handler.</summary>
     private static void QueueScroll(ScrollAction action)
     {
@@ -143,11 +156,19 @@ public static class InputHandler
         int prevRenderedLines = 1; // track how many lines we're occupying
         bool inBracketPaste = false; // track \x1b[200~ ... \x1b[201~ paste mode
 
+        // Flush any pending input before starting
+        FlushInput();
+
+        // Enable mouse reporting for scrolling
+        Console.Write("\x1b[?1000h\x1b[?1002h\x1b[?1006h");
+        Console.Out.Flush();
+
+        // Enable raw mode for proper escape sequence handling
+        TerminalRawMode.EnableRawMode();
+
         Console.Write($"\u001b[1m{prompt}\u001b[0m ");
         var promptLen = prompt.Length + 1; // visible width of "> "
 
-        // Enable raw mode on Unix to get escape sequences
-        TerminalRawMode.EnableRawMode();
         try
         {
             while (true)
@@ -191,6 +212,9 @@ public static class InputHandler
         finally
         {
             TerminalRawMode.DisableRawMode();
+            // Disable mouse reporting
+            Console.Write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+            Console.Out.Flush();
         }
     }
 

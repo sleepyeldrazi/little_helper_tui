@@ -20,12 +20,16 @@ class Program
     private static readonly bool IsMacTerminal = Environment.GetEnvironmentVariable("TERM_PROGRAM") == "Apple_Terminal";
 
     private static string EnterAltBuffer => IsMacTerminal
-        ? "\x1b[?1049h"  // Terminal.app: no scrollback, but consistent behavior
-        : "\x1b[?1047h\x1b[H\x1b[2J\x1b[?1000h\x1b[?1002h\x1b[?1006h";  // Modern terminals: scrollback + mouse
+        ? "\x1b[?1049h"  // Terminal.app: no scrollback
+        : "\x1b[?1047h\x1b[H\x1b[2J";  // Modern terminals: scrollback
 
     private static string LeaveAltBuffer => IsMacTerminal
         ? "\x1b[?1049l"  // Terminal.app
-        : "\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?1047l";  // Modern terminals: disable mouse then exit alt buffer
+        : "\x1b[?1047l";  // Modern terminals: exit alt buffer
+
+    // Mouse reporting - enable only during input
+    private static string EnableMouse => "\x1b[?1000h\x1b[?1002h\x1b[?1006h";
+    private static string DisableMouse => "\x1b[?1006l\x1b[?1002l\x1b[?1000l";
 
     private static void EnterAlternateScreen() => Console.Write(EnterAltBuffer);
     private static void LeaveAlternateScreen() => Console.Write(LeaveAltBuffer);
@@ -133,19 +137,27 @@ class Program
         {
             e.Cancel = true;  // Always prevent immediate exit
 
-            // If agent is running, cancel it. Otherwise remind user how to quit.
+            // If agent is running, cancel it. Otherwise exit cleanly.
             if (_currentCts != null && !_currentCts.IsCancellationRequested)
             {
                 _currentCts.Cancel();
             }
             else
             {
-                console.MarkupLine("[yellow]Use :quit to exit.[/]");
+                // Clean exit - disable mouse, leave alt buffer
+                Console.Write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+                LeaveAlternateScreen();
+                Environment.Exit(0);
             }
         };
 
-        // Ensure we leave alternate buffer on any exit path
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => LeaveAlternateScreen();
+        // Ensure we leave alternate buffer and restore terminal on any exit path
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            // Disable mouse reporting first
+            Console.Write("\x1b[?1006l\x1b[?1002l\x1b[?1000l");
+            LeaveAlternateScreen();
+        };
 
         var observer = new TuiObserver(_tuiConfig);
         Agent? agent = null;
