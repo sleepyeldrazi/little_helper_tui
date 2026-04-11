@@ -105,6 +105,9 @@ class Program
         {
             console.MarkupLine("[dim][yellow]Note:[/] Terminal.app has limited scrollback. Use iTerm2 or Ghostty for full scrollback.[/]");
         }
+
+        // Hint for new users
+        console.MarkupLine("[dim]Hint: use :help for the command list[/]");
         console.WriteLine();
 
         var workingDir = Directory.GetCurrentDirectory();
