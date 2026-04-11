@@ -58,6 +58,9 @@ class Program
                 return 1;
             }
 
+            // Auto-detect context window from server if not set in config
+            resolved = await DetectContextWindowAsync(resolved);
+
             // Create controller and main window
             var controller = new TuiController(config, yoloMode);
             var mainWindow = new MainWindow(controller);
@@ -67,6 +70,8 @@ class Program
             // Show welcome banner (dim, like old Spectre)
             mainWindow.AddColoredBlock("little helper", DarkColors.AssistantBorder);
             mainWindow.AddColoredBlock($"Using {resolved.ModelId} ({resolved.BaseUrl})", DarkColors.Dim);
+            var ctxK = resolved.ContextWindow >= 1024 ? $"{resolved.ContextWindow / 1024}K" : $"{resolved.ContextWindow}";
+            mainWindow.AddColoredBlock($"Context window: {ctxK} tokens", DarkColors.Dim);
             mainWindow.AddColoredBlock("Hint: use :help for the command list", DarkColors.Dim);
             mainWindow.AddColoredBlock("", DarkColors.Base);
 
@@ -77,6 +82,49 @@ class Program
         {
             Application.Shutdown();
         }
+    }
+
+    /// <summary>
+    /// Auto-detect context window from server if the config value looks like a default.
+    /// Priority: 1) models.json value (if explicitly set/non-default) 2) server query 3) fallback
+    /// </summary>
+    private static async Task<ResolvedModel> DetectContextWindowAsync(ResolvedModel resolved)
+    {
+        // If models.json has a non-default context window, trust it
+        if (resolved.ContextWindow != 32768)
+            return resolved;
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            IModelClient client;
+            if (resolved.ApiType == "anthropic")
+            {
+                client = new AnthropicClient(
+                    resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
+                    string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                    resolved.Headers, resolved.AuthType);
+            }
+            else
+            {
+                client = new ModelClient(
+                    resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
+                    string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                    resolved.Headers);
+            }
+
+            var detected = await client.QueryContextWindow(cts.Token);
+            if (detected.HasValue && detected.Value > 0)
+            {
+                return resolved with { ContextWindow = detected.Value };
+            }
+        }
+        catch
+        {
+            // Detection failed, use config value
+        }
+
+        return resolved;
     }
 
     /// <summary>Show provider setup dialog (first run, no providers configured).</summary>

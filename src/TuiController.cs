@@ -236,7 +236,7 @@ public class TuiController
         _mainWindow?.SetFocus();
     }
 
-    private void SwitchModel(string arg)
+    private async void SwitchModel(string arg)
     {
         if (_mainWindow == null) return;
 
@@ -270,11 +270,13 @@ public class TuiController
 
         if (newModel != null)
         {
+            // Auto-detect context window from server
+            newModel = await DetectContextWindowAsync(newModel);
             _model = newModel;
             _agent = null;
             _observer?.Reset();
-            _mainWindow.AddColoredBlock($"Switched to {newModel.ModelId}");
-            // _mainWindow.SetStatus($"Model: {newModel.ModelId}");
+            var ctxK = newModel.ContextWindow >= 1024 ? $"{newModel.ContextWindow / 1024}K" : $"{newModel.ContextWindow}";
+            _mainWindow.AddColoredBlock($"Switched to {newModel.ModelId} (context: {ctxK})");
         }
     }
 
@@ -462,6 +464,39 @@ public class TuiController
     }
 
     // --- Helpers ---
+
+    private static async Task<ResolvedModel> DetectContextWindowAsync(ResolvedModel resolved)
+    {
+        if (resolved.ContextWindow != 32768)
+            return resolved;
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            IModelClient client;
+            if (resolved.ApiType == "anthropic")
+            {
+                client = new AnthropicClient(
+                    resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
+                    string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                    resolved.Headers, resolved.AuthType);
+            }
+            else
+            {
+                client = new ModelClient(
+                    resolved.BaseUrl, resolved.ModelId, resolved.Temperature,
+                    string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
+                    resolved.Headers);
+            }
+
+            var detected = await client.QueryContextWindow(cts.Token);
+            if (detected.HasValue && detected.Value > 0)
+                return resolved with { ContextWindow = detected.Value };
+        }
+        catch { }
+
+        return resolved;
+    }
 
     private Agent CreateAgent()
     {
