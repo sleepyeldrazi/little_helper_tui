@@ -95,21 +95,21 @@ public class ColoredLine : View
         {
             var attr = seg.Scheme.Normal;
             Driver.SetAttribute(attr);
-            foreach (var ch in seg.Text)
+            foreach (var rune in seg.Text.EnumerateRunes())
             {
                 if (x >= bounds.Width) break;
-                if (ch == '\n') continue;
                 Move(x, 0);
-                Driver.AddRune((Rune)ch);
-                x++;
+                Driver.AddRune(rune);
+                x += Math.Max(1, rune.Utf16SequenceLength);
             }
         }
         // Fill rest with spaces
+        var spaceRune = new Rune(' ');
         Driver.SetAttribute(DarkColors.Base.Normal);
         while (x < bounds.Width)
         {
             Move(x, 0);
-            Driver.AddRune((Rune)' ');
+            Driver.AddRune(spaceRune);
             x++;
         }
     }
