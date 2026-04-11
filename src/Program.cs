@@ -58,9 +58,6 @@ class Program
                 return 1;
             }
 
-            // Auto-detect context window from server if not set in config
-            resolved = await DetectContextWindowAsync(resolved);
-
             // Create controller and main window
             var controller = new TuiController(config, yoloMode);
             var mainWindow = new MainWindow(controller);
@@ -70,10 +67,31 @@ class Program
             // Show welcome banner (dim, like old Spectre)
             mainWindow.AddColoredBlock("little helper", DarkColors.AssistantBorder);
             mainWindow.AddColoredBlock($"Using {resolved.ModelId} ({resolved.BaseUrl})", DarkColors.Dim);
-            var ctxK = resolved.ContextWindow >= 1024 ? $"{resolved.ContextWindow / 1024}K" : $"{resolved.ContextWindow}";
-            mainWindow.AddColoredBlock($"Context window: {ctxK} tokens", DarkColors.Dim);
+            mainWindow.AddColoredBlock("Detecting context window...", DarkColors.Dim);
             mainWindow.AddColoredBlock("Hint: use :help for the command list", DarkColors.Dim);
             mainWindow.AddColoredBlock("", DarkColors.Base);
+
+            // Detect context window in background once event loop is running
+            var resolvedCopy = resolved;
+            mainWindow.Ready += (s, e) =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var detected = await DetectContextWindowAsync(resolvedCopy);
+                        Application.Invoke(() =>
+                        {
+                            controller.SetModel(detected);
+                            var ctxK = detected.ContextWindow >= 1024
+                                ? $"{detected.ContextWindow / 1024}K"
+                                : $"{detected.ContextWindow}";
+                            mainWindow.AddColoredBlock($"Context window: {ctxK} tokens", DarkColors.Dim);
+                        });
+                    }
+                    catch { }
+                });
+            };
 
             Application.Run(mainWindow);
             return 0;
