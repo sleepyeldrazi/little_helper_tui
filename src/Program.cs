@@ -11,6 +11,7 @@ class Program
     private static GitCheckpoint? _gitCheckpoint;
     private static int _lastConsoleWidth = Console.WindowWidth;
     private static bool _yoloMode = false;  // Allow writes outside working directory
+    private static CancellationTokenSource? _currentCts;  // For Ctrl+C cancellation during agent run
 
     // Alternate screen buffer: preserves user's terminal history on exit
     // ?1047h = switch to alt buffer (keeps scrollback) — works on most modern terminals
@@ -114,8 +115,17 @@ class Program
         var modelId = resolved.ModelId;
         Console.CancelKeyPress += (_, e) =>
         {
-            e.Cancel = true;
-            console.MarkupLine("[yellow]Use :quit to exit.[/]");
+            e.Cancel = true;  // Always prevent immediate exit
+
+            // If agent is running, cancel it. Otherwise remind user how to quit.
+            if (_currentCts != null && !_currentCts.IsCancellationRequested)
+            {
+                _currentCts.Cancel();
+            }
+            else
+            {
+                console.MarkupLine("[yellow]Use :quit to exit.[/]");
+            }
         };
 
         // Ensure we leave alternate buffer on any exit path
@@ -183,6 +193,7 @@ class Program
             }
 
             using var cts = new CancellationTokenSource();
+            _currentCts = cts;  // Store for Ctrl+C cancellation
 
             // Clear the raw input lines that InputHandler echoed during typing
             // so only the formatted panel remains. +1 for the ── separator line.
@@ -273,6 +284,7 @@ class Program
             finally
             {
                 Console.SetError(originalStderr);
+                _currentCts = null;  // Clear the cancellation token reference
             }
 
             // Show captured stderr as clean error messages
