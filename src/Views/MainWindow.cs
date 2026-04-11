@@ -86,6 +86,7 @@ public class ColoredLine : View
 /// <summary>
 /// Main window: dark, borderless, full-screen.
 /// Chat area uses a simple View with manual Y tracking inside a ScrollView.
+/// All view mutation goes through InvokeUI which handles thread safety.
 /// </summary>
 public class MainWindow : Window
 {
@@ -95,7 +96,7 @@ public class MainWindow : Window
     private readonly TuiController _controller;
     private bool _autoScroll = true;
     private int _nextY;
-    private int _lastKnownWidth;
+    private bool _updatingSize;
 
     private readonly List<string> _history = new();
     private int _historyIndex = -1;
@@ -131,24 +132,6 @@ public class MainWindow : Window
         };
         _scrollView.Add(_chatContent);
 
-        // On resize, update content size to new width (prevent freeze from stale size)
-        _scrollView.LayoutComplete += (s, e) =>
-        {
-            var newWidth = _scrollView.Frame.Width;
-            if (newWidth > 0 && newWidth != _lastKnownWidth)
-            {
-                _lastKnownWidth = newWidth;
-                // Update content size with new width, keep height
-                _scrollView.SetContentSize(new System.Drawing.Size(newWidth, Math.Max(1, _nextY)));
-                if (_autoScroll)
-                {
-                    var viewportHeight = _scrollView.Frame.Height;
-                    var targetOffset = Math.Max(0, _nextY - viewportHeight);
-                    _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
-                }
-            }
-        };
-
         var promptLabel = new Label
         {
             X = 0, Y = Pos.AnchorEnd(1),
@@ -181,19 +164,27 @@ public class MainWindow : Window
         _inputField.SetFocus();
     }
 
+    /// <summary>
+    /// Marshal action to UI thread. Always uses Application.Invoke to ensure
+    /// the action runs during the main loop iteration, not inside an event handler.
+    /// </summary>
+    private static void InvokeUI(Action action)
+    {
+        Application.Invoke(action);
+    }
+
     public void SetStatus(string text) { }
 
     public int GetChatWidth()
     {
         var w = _scrollView.Frame.Width;
         if (w <= 0) return 80;
-        // Subtract 1 for vertical scroll indicator
         return w - 1;
     }
 
     public void AddColoredBlock(string text, ColorScheme? scheme = null)
     {
-        Application.Invoke(() =>
+        InvokeUI(() =>
         {
             var lines = text.Split('\n');
             foreach (var line in lines)
@@ -216,7 +207,7 @@ public class MainWindow : Window
 
     public void AddColoredSegments(List<TextSegment> segments)
     {
-        Application.Invoke(() =>
+        InvokeUI(() =>
         {
             var line = new ColoredLine(segments)
             {
@@ -231,7 +222,7 @@ public class MainWindow : Window
 
     public void ClearChat()
     {
-        Application.Invoke(() =>
+        InvokeUI(() =>
         {
             foreach (var child in _chatContent.Subviews.ToList())
                 _chatContent.Remove(child);
@@ -243,23 +234,31 @@ public class MainWindow : Window
 
     private void UpdateContentSize()
     {
-        _chatContent.Height = Math.Max(1, _nextY);
-        var w = _scrollView.Frame.Width;
-        if (w <= 0) w = 80;
-        _lastKnownWidth = w;
-        _scrollView.SetContentSize(new System.Drawing.Size(w, Math.Max(1, _nextY)));
-
-        if (_autoScroll)
+        if (_updatingSize) return;
+        _updatingSize = true;
+        try
         {
-            var viewportHeight = _scrollView.Frame.Height;
-            var targetOffset = Math.Max(0, _nextY - viewportHeight);
-            _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
+            _chatContent.Height = Math.Max(1, _nextY);
+            var w = _scrollView.Frame.Width;
+            if (w <= 0) w = 80;
+            _scrollView.SetContentSize(new System.Drawing.Size(w, Math.Max(1, _nextY)));
+
+            if (_autoScroll)
+            {
+                var viewportHeight = _scrollView.Frame.Height;
+                var targetOffset = Math.Max(0, _nextY - viewportHeight);
+                _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
+            }
+        }
+        finally
+        {
+            _updatingSize = false;
         }
     }
 
     public void ScrollToBottom()
     {
-        Application.Invoke(() =>
+        InvokeUI(() =>
         {
             var viewportHeight = _scrollView.Frame.Height;
             var targetOffset = Math.Max(0, _nextY - viewportHeight);

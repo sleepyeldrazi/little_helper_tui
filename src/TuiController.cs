@@ -58,6 +58,9 @@ public class TuiController
         // Render user message panel
         _observer.AddUserMessage(text);
 
+        // Yield to let the main loop process the queued UI updates
+        await Task.Delay(10);
+
         // Create session logger if needed
         _logger ??= new SessionLogger(_model.ModelId, _workingDir);
 
