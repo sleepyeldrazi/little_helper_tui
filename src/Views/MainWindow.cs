@@ -97,7 +97,7 @@ public class MainWindow : Window
 {
     private readonly ScrollView _scrollView;
     private readonly View _chatContent;
-    private readonly TextField _inputField;
+    private readonly TextView _inputView;
     private readonly TuiController _controller;
     private bool _autoScroll = true;
     private int _nextY;
@@ -107,7 +107,7 @@ public class MainWindow : Window
     private int _historyIndex = -1;
     private string _savedDraft = "";
 
-    public TextField InputField => _inputField;
+    public TextView InputView => _inputView;
 
     public MainWindow(TuiController controller)
     {
@@ -131,7 +131,7 @@ public class MainWindow : Window
         {
             X = 0, Y = 0,
             Width = Dim.Fill(),
-            Height = Dim.Fill(1),
+            Height = Dim.Fill(3),  // Leave room for multi-line input
             ColorScheme = DarkColors.Base,
             ShowVerticalScrollIndicator = true
         };
@@ -139,36 +139,38 @@ public class MainWindow : Window
 
         var promptLabel = new Label
         {
-            X = 0, Y = Pos.AnchorEnd(1),
+            X = 0, Y = Pos.AnchorEnd(3),
             Text = "> ",
             ColorScheme = DarkColors.Dim
         };
 
-        _inputField = new TextField
+        _inputView = new TextView
         {
-            X = 2, Y = Pos.AnchorEnd(1),
-            Width = Dim.Fill(), Height = 1,
+            X = 2, Y = Pos.AnchorEnd(3),
+            Width = Dim.Fill(), Height = 3,
             Text = "",
-            ColorScheme = DarkColors.Base
+            ColorScheme = DarkColors.Base,
+            WordWrap = true,
+            AllowsTab = false  // Tab does path completion, not insert tab
         };
 
-        Add(_scrollView, promptLabel, _inputField);
+        Add(_scrollView, promptLabel, _inputView);
 
-        _inputField.Accept += OnInputAccepting;
-        _inputField.KeyDown += (s, e) =>
+        _inputView.KeyDown += (s, e) =>
         {
             switch (e.KeyCode)
             {
-                case KeyCode.CursorUp: NavigateHistory(-1); e.Handled = true; break;
-                case KeyCode.CursorDown: NavigateHistory(1); e.Handled = true; break;
+                case KeyCode.CursorUp when e.IsCtrl: NavigateHistory(-1); e.Handled = true; break;
+                case KeyCode.CursorDown when e.IsCtrl: NavigateHistory(1); e.Handled = true; break;
                 case KeyCode.PageUp: ScrollChat(-10); e.Handled = true; break;
                 case KeyCode.PageDown: ScrollChat(10); e.Handled = true; break;
                 case KeyCode.Tab: CompletePath(); e.Handled = true; break;
-                case KeyCode.C when e.IsCtrl: _controller.Cancel(); e.Handled = true; break;
+                case KeyCode.C when e.IsCtrl && !e.IsShift: _controller.Cancel(); e.Handled = true; break;
+                case KeyCode.Enter when e.IsCtrl: SubmitInput(); e.Handled = true; break;
             }
         };
 
-        _inputField.SetFocus();
+        _inputView.SetFocus();
     }
 
     /// <summary>
@@ -283,23 +285,20 @@ public class MainWindow : Window
         _autoScroll = -newY >= _nextY - _scrollView.Frame.Height - 2;
     }
 
-    private void OnInputAccepting(object? sender, EventArgs e)
+    private void SubmitInput()
     {
-        var text = _inputField.Text?.Trim() ?? "";
+        var text = _inputView.Text?.Trim() ?? "";
         if (string.IsNullOrEmpty(text)) return;
 
         if (_history.Count == 0 || _history[^1] != text)
             _history.Add(text);
         _historyIndex = -1;
-        _inputField.Text = "";
+        _inputView.Text = "";
 
         if (text.StartsWith(":"))
             _controller.ExecuteCommand(text);
         else
             _controller.SubmitPrompt(text);
-
-        if (e is System.ComponentModel.HandledEventArgs handled)
-            handled.Handled = true;
     }
 
     private void NavigateHistory(int direction)
@@ -309,11 +308,11 @@ public class MainWindow : Window
         {
             if (_historyIndex == -1)
             {
-                _savedDraft = _inputField.Text ?? "";
+                _savedDraft = _inputView.Text ?? "";
                 _historyIndex = _history.Count - 1;
             }
             else if (_historyIndex > 0) _historyIndex--;
-            _inputField.Text = _history[_historyIndex];
+            _inputView.Text = _history[_historyIndex];
         }
         else
         {
@@ -322,12 +321,12 @@ public class MainWindow : Window
                 if (_historyIndex < _history.Count - 1)
                 {
                     _historyIndex++;
-                    _inputField.Text = _history[_historyIndex];
+                    _inputView.Text = _history[_historyIndex];
                 }
                 else
                 {
                     _historyIndex = -1;
-                    _inputField.Text = _savedDraft;
+                    _inputView.Text = _savedDraft;
                 }
             }
         }
@@ -336,11 +335,11 @@ public class MainWindow : Window
     /// <summary>Path completion on Tab - completes partial paths using filesystem.</summary>
     private void CompletePath()
     {
-        var text = _inputField.Text ?? "";
+        var text = _inputView.Text ?? "";
         if (string.IsNullOrEmpty(text)) return;
 
         // Find the partial path at cursor position
-        var cursorPos = _inputField.CursorPosition;
+        var cursorPos = _inputView.CursorPosition;
         var beforeCursor = text[..Math.Min(cursorPos, text.Length)];
         
         // Find the start of the current word (path)
@@ -409,8 +408,8 @@ public class MainWindow : Window
                 }
 
                 var newText = beforeCursor[..wordStart] + completion + text[cursorPos..];
-                _inputField.Text = newText;
-                _inputField.CursorPosition = wordStart + completion.Length;
+                _inputView.Text = newText;
+                _inputView.CursorPosition = wordStart + completion.Length;
             }
             else
             {
@@ -420,8 +419,8 @@ public class MainWindow : Window
                 {
                     // Complete to common prefix
                     var newText = beforeCursor[..wordStart] + commonPrefix + text[cursorPos..];
-                    _inputField.Text = newText;
-                    _inputField.CursorPosition = wordStart + commonPrefix.Length;
+                    _inputView.Text = newText;
+                    _inputView.CursorPosition = wordStart + commonPrefix.Length;
                 }
                 else
                 {

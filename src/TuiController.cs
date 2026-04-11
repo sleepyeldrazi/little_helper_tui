@@ -76,7 +76,7 @@ public class TuiController
         var cts = _currentCts;
         var sw = Stopwatch.StartNew();
 
-        Application.Invoke(() => _mainWindow.InputField.Enabled = false);
+        Application.Invoke(() => _mainWindow.InputView.Enabled = false);
 
         try
         {
@@ -141,8 +141,8 @@ public class TuiController
         {
             Application.Invoke(() =>
             {
-                _mainWindow.InputField.Enabled = true;
-                _mainWindow.InputField.SetFocus();
+                _mainWindow.InputView.Enabled = true;
+                _mainWindow.InputView.SetFocus();
             });
             _currentCts = null;
         }
@@ -485,7 +485,11 @@ public class TuiController
         HelpLine(":hide", "Drop to shell, return with 'exit'");
         HelpLine(":quit", "Exit");
         _mainWindow.AddColoredBlock("");
-        _mainWindow.AddColoredBlock("During agent run: Ctrl+C = cancel", DarkColors.Dim);
+        _mainWindow.AddColoredBlock("Input keys:", DarkColors.Bold);
+        _mainWindow.AddColoredBlock("  Ctrl+Enter      Submit message");
+        _mainWindow.AddColoredBlock("  Tab             Complete file path");
+        _mainWindow.AddColoredBlock("  Ctrl+Up/Down    Navigate history");
+        _mainWindow.AddColoredBlock("  Ctrl+C          Cancel during agent run");
     }
 
     private void HelpLine(string cmd, string desc)
