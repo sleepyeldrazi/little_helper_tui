@@ -126,6 +126,13 @@ else
     cd "$REPO_DIR"
 fi
 
+# Re-exec from repo copy to avoid stale GitHub CDN cache issues.
+# The curl'd script may be outdated; the repo's copy is always current.
+if [ "${_LH_FROM_REPO:-}" != "1" ]; then
+    export _LH_FROM_REPO=1 DOTNET_BIN
+    exec bash "${REPO_DIR}/install.sh"
+fi
+
 # 3. Build (using resolved dotnet path)
 info "Building Release binary..."
 "$DOTNET_BIN" build -c Release -v quiet 2>&1 || die "Build failed"
