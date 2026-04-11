@@ -15,8 +15,8 @@ public static class DarkColors
     // User panel border: green on black
     public static readonly ColorScheme UserBorder = MakeScheme(Color.Green, Color.Black);
 
-    // Assistant panel border: blue on black (soft teal-ish)
-    public static readonly ColorScheme AssistantBorder = MakeScheme(Color.Blue, Color.Black);
+    // Assistant panel border: warm blue (purple-adjacent) on black — matches old Spectre Color.Blue
+    public static readonly ColorScheme AssistantBorder = MakeScheme(new Color(110, 130, 230), Color.Black);
 
     // Thinking panel border: dark grey on black
     public static readonly ColorScheme ThinkingBorder = MakeScheme(Color.DarkGray, Color.Black);
@@ -42,6 +42,12 @@ public static class DarkColors
     // Red errors
     public static readonly ColorScheme Error = MakeScheme(Color.Red, Color.Black);
 
+    // Bold text (white, same as bright but semantically different)
+    public static readonly ColorScheme Bold = MakeScheme(Color.White, Color.Black);
+
+    // Teal for assistant role in history
+    public static readonly ColorScheme Teal = MakeScheme(new Color(100, 200, 180), Color.Black);
+
     // Dialog: soft grey on very dark grey, subtle highlight
     public static readonly ColorScheme Dialog = new()
     {
@@ -61,8 +67,57 @@ public static class DarkColors
 }
 
 /// <summary>
+/// A segment of colored text within a line.
+/// </summary>
+public record TextSegment(string Text, ColorScheme Scheme);
+
+/// <summary>
+/// A view that renders multiple colored text segments on a single line.
+/// Used to display mixed-color output like "[green]✓[/] Done [dim]5 steps[/]".
+/// </summary>
+public class ColoredLine : View
+{
+    private readonly List<TextSegment> _segments;
+
+    public ColoredLine(List<TextSegment> segments)
+    {
+        _segments = segments;
+        Height = 1;
+        Width = Dim.Fill();
+        CanFocus = false;
+    }
+
+    public override void OnDrawContent(System.Drawing.Rectangle viewport)
+    {
+        var bounds = GetContentSize();
+        int x = 0;
+        foreach (var seg in _segments)
+        {
+            var attr = seg.Scheme.Normal;
+            Driver.SetAttribute(attr);
+            foreach (var ch in seg.Text)
+            {
+                if (x >= bounds.Width) break;
+                if (ch == '\n') continue;
+                Move(x, 0);
+                Driver.AddRune((Rune)ch);
+                x++;
+            }
+        }
+        // Fill rest with spaces
+        Driver.SetAttribute(DarkColors.Base.Normal);
+        while (x < bounds.Width)
+        {
+            Move(x, 0);
+            Driver.AddRune((Rune)' ');
+            x++;
+        }
+    }
+}
+
+/// <summary>
 /// Main window: dark, borderless, full-screen.
-/// Chat area is a ScrollView of colored Label blocks. Input at bottom with "> " prompt.
+/// Chat area is a ScrollView of colored views. Input at bottom with "> " prompt.
 /// </summary>
 public class MainWindow : Window
 {
@@ -105,6 +160,13 @@ public class MainWindow : Window
         };
         _scrollView.Add(_chatContent);
 
+        // Handle resize: re-scroll to bottom if we were auto-scrolling
+        _scrollView.LayoutComplete += (s, e) =>
+        {
+            if (_autoScroll)
+                ScrollToBottom();
+        };
+
         var promptLabel = new Label
         {
             X = 0, Y = Pos.AnchorEnd(1),
@@ -139,24 +201,52 @@ public class MainWindow : Window
 
     public void SetStatus(string text) { }
 
-    /// <summary>Add a colored text block to the chat.</summary>
+    /// <summary>Get the current chat area width for panel border sizing.</summary>
+    public int GetChatWidth()
+    {
+        var w = _scrollView.Frame.Width;
+        return w > 0 ? w : 80;
+    }
+
+    /// <summary>Add a single-color text block to the chat.</summary>
     public void AddColoredBlock(string text, ColorScheme? scheme = null)
     {
         Application.Invoke(() =>
         {
-            var label = new Label
+            // For multi-line text, add each line as a separate label for proper layout
+            var lines = text.Split('\n');
+            foreach (var line in lines)
+            {
+                var label = new Label
+                {
+                    X = 0,
+                    Y = _chatContent.Subviews.Count > 0
+                        ? Pos.Bottom(_chatContent.Subviews[^1])
+                        : 0,
+                    Width = Dim.Fill(),
+                    Height = 1,
+                    Text = line,
+                    ColorScheme = scheme ?? DarkColors.Base
+                };
+                _chatContent.Add(label);
+            }
+            if (_autoScroll) ScrollToBottom();
+        });
+    }
+
+    /// <summary>Add a line with multiple colored segments to the chat.</summary>
+    public void AddColoredSegments(List<TextSegment> segments)
+    {
+        Application.Invoke(() =>
+        {
+            var line = new ColoredLine(segments)
             {
                 X = 0,
                 Y = _chatContent.Subviews.Count > 0
                     ? Pos.Bottom(_chatContent.Subviews[^1])
                     : 0,
-                Width = Dim.Fill(),
-                Height = Dim.Auto(),
-                Text = text,
-                ColorScheme = scheme ?? DarkColors.Base
             };
-
-            _chatContent.Add(label);
+            _chatContent.Add(line);
             if (_autoScroll) ScrollToBottom();
         });
     }
