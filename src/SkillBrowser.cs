@@ -1,12 +1,12 @@
 using System.ComponentModel;
-using System.Text;
+using LittleHelper;
 using LittleHelperTui.Views;
 using Terminal.Gui;
 
 namespace LittleHelperTui;
 
 /// <summary>
-/// Skill browser - discovers and loads SKILL.md files.
+/// Skill browser - uses core SkillDiscovery, shows name + description.
 /// </summary>
 public static class SkillBrowser
 {
@@ -15,124 +15,56 @@ public static class SkillBrowser
     /// </summary>
     public static string? Browse(string workingDir)
     {
-        var skills = DiscoverSkills(workingDir);
+        var discovery = new SkillDiscovery();
+        discovery.Discover(workingDir);
 
-        if (skills.Count == 0)
+        if (discovery.Skills.Count == 0)
         {
             MessageBox.ErrorQuery("No Skills", "No skills found in ~/.little_helper/skills/ or ./.little_helper/skills/", "OK");
             return null;
         }
 
-        var dialog = new SkillSelectionDialog(skills);
+        var dialog = new SkillSelectionDialog(discovery.Skills);
         Application.Run(dialog);
-        return dialog.SelectedSkill?.Content;
-    }
-
-    private static List<SkillInfo> DiscoverSkills(string workingDir)
-    {
-        var skills = new List<SkillInfo>();
-
-        // Global skills
-        var globalDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".little_helper", "skills");
-
-        if (Directory.Exists(globalDir))
-        {
-            foreach (var file in Directory.GetFiles(globalDir, "*.md", SearchOption.AllDirectories))
-            {
-                skills.Add(LoadSkill(file, "global"));
-            }
-        }
-
-        // Local skills
-        var localDir = Path.Combine(workingDir, ".little_helper", "skills");
-        if (Directory.Exists(localDir))
-        {
-            foreach (var file in Directory.GetFiles(localDir, "*.md", SearchOption.AllDirectories))
-            {
-                skills.Add(LoadSkill(file, "local"));
-            }
-        }
-
-        return skills;
-    }
-
-    private static SkillInfo LoadSkill(string path, string source)
-    {
-        var content = File.ReadAllText(path);
-        var name = Path.GetFileNameWithoutExtension(path);
-
-        // Try to extract title from first line
-        var firstLine = content.Split('\n').FirstOrDefault()?.Trim() ?? "";
-        if (firstLine.StartsWith("# "))
-        {
-            name = firstLine[2..].Trim();
-        }
-
-        return new SkillInfo
-        {
-            Name = name,
-            Path = path,
-            Source = source,
-            Content = content
-        };
-    }
-
-    private class SkillInfo
-    {
-        public string Name { get; set; } = "";
-        public string Path { get; set; } = "";
-        public string Source { get; set; } = "";
-        public string Content { get; set; } = "";
+        return dialog.SelectedContent;
     }
 
     /// <summary>
-    /// Dialog for selecting a skill.
+    /// Dialog for selecting a skill. Shows name and description.
     /// </summary>
     private class SkillSelectionDialog : Dialog
     {
-        public SkillInfo? SelectedSkill { get; private set; }
+        public string? SelectedContent { get; private set; }
 
-        private List<SkillInfo> _skills;
-        private ListView _listView;
+        private readonly IReadOnlyList<SkillDef> _skills;
+        private readonly ListView _listView;
 
-        public SkillSelectionDialog(List<SkillInfo> skills)
+        public SkillSelectionDialog(IReadOnlyList<SkillDef> skills)
         {
             _skills = skills;
-            Title = "Select Skill";
+            Title = "Skills";
             Width = Dim.Percent(60);
             Height = Dim.Percent(70);
             ColorScheme = DarkColors.Dialog;
 
-            // List view
+            var items = skills.Select(s => $"{s.Name}  {s.Description}").ToList();
+
             _listView = new ListView
             {
                 X = 1,
                 Y = 1,
                 Width = Dim.Fill(2),
                 Height = Dim.Fill(4),
-                Source = new ListWrapper<string>(new System.Collections.ObjectModel.ObservableCollection<string>(skills.Select(s => $"{s.Name} ({s.Source})")))
+                Source = new ListWrapper<string>(
+                    new System.Collections.ObjectModel.ObservableCollection<string>(items))
             };
 
-            _listView.OpenSelectedItem += (s, e) =>
-            {
-                if (e.Item >= 0 && e.Item < _skills.Count)
-                {
-                    SelectedSkill = _skills[e.Item];
-                    Application.RequestStop();
-                }
-            };
+            _listView.OpenSelectedItem += (s, e) => SelectAndClose(e.Item);
 
-            // Buttons
             var selectButton = new Button { Title = "Select", IsDefault = true };
             selectButton.Accept += (s, e) =>
             {
-                if (_listView.SelectedItem >= 0 && _listView.SelectedItem < _skills.Count)
-                {
-                    SelectedSkill = _skills[_listView.SelectedItem];
-                    Application.RequestStop();
-                }
+                SelectAndClose(_listView.SelectedItem);
                 if (e is HandledEventArgs he) he.Handled = true;
             };
 
@@ -146,6 +78,19 @@ public static class SkillBrowser
             AddButton(selectButton);
             AddButton(cancelButton);
             Add(_listView);
+        }
+
+        private void SelectAndClose(int index)
+        {
+            if (index >= 0 && index < _skills.Count)
+            {
+                try
+                {
+                    SelectedContent = File.ReadAllText(_skills[index].FilePath);
+                }
+                catch { }
+                Application.RequestStop();
+            }
         }
     }
 }

@@ -240,11 +240,11 @@ public class TerminalGuiObserver : IAgentObserver
         foreach (var seg in headerSegments)
             headerLen += seg.Text.Length;
 
-        // Top border: ╭─ + header segments + ─...─╮
+        // Top border: ╭─ + header segments + ─...─╮  (total = width chars)
         var topSegments = new List<TextSegment>();
-        topSegments.Add(new("\u256d\u2500", borderScheme));
-        topSegments.AddRange(headerSegments);
-        var remainingDashes = Math.Max(1, width - 4 - headerLen);
+        topSegments.Add(new("\u256d\u2500", borderScheme));  // 2 chars
+        topSegments.AddRange(headerSegments);                 // headerLen chars
+        var remainingDashes = Math.Max(1, width - 3 - headerLen);  // fill + ╮
         topSegments.Add(new(new string('\u2500', remainingDashes) + "\u256e", borderScheme));
         _mainWindow.AddColoredSegments(topSegments);
 
@@ -268,10 +268,10 @@ public class TerminalGuiObserver : IAgentObserver
             }
         }
 
-        // Bottom border: ╰─...─╯
-        var bottomDashes = Math.Max(1, width - 2);
+        // Bottom border: ╰─...─╯  (total = width chars)
+        var bottomDashes = Math.Max(1, width - 2);  // ╰ + dashes + ╯ = width
         _mainWindow.AddColoredBlock(
-            "\u2570" + new string('\u2500', bottomDashes - 1) + "\u256f",
+            "\u2570" + new string('\u2500', bottomDashes) + "\u256f",
             borderScheme);
     }
 

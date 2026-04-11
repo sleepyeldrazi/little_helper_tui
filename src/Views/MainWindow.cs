@@ -186,7 +186,9 @@ public class MainWindow : Window
     public int GetChatWidth()
     {
         var w = _scrollView.Frame.Width;
-        return w > 0 ? w : 80;
+        if (w <= 0) return 80;
+        // Subtract 1 for vertical scroll indicator
+        return w - 1;
     }
 
     public void AddColoredBlock(string text, ColorScheme? scheme = null)
