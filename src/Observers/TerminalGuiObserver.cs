@@ -213,7 +213,6 @@ public class TerminalGuiObserver : IAgentObserver
             new($" {steps} steps, {elapsed}, {context}/{maxCtx} context ({thinking} thinking)", DarkColors.Dim)
         });
 
-        // Files: dim
         if (filesChanged > 0)
             _mainWindow.AddColoredBlock($"  {filesChanged} files changed. Use :files to list.", DarkColors.Dim);
 
@@ -250,20 +249,23 @@ public class TerminalGuiObserver : IAgentObserver
         _mainWindow.AddColoredSegments(topSegments);
 
         // Content: │ line │  — border chars in border color, content in white
-        foreach (var line in content.Split('\n'))
-        {
-            var trimmed = line;
-            var maxContentWidth = width - 4; // "│ " + content + " │"
-            if (trimmed.Length > maxContentWidth && maxContentWidth > 0)
-                trimmed = trimmed[..maxContentWidth];
-            var padding = Math.Max(0, maxContentWidth - trimmed.Length);
+        // Wrap long lines to fit within panel
+        var maxContentWidth = width - 4; // "│ " + content + " │"
+        if (maxContentWidth < 10) maxContentWidth = 76;
 
-            _mainWindow.AddColoredSegments(new List<TextSegment>
+        foreach (var rawLine in content.Split('\n'))
+        {
+            var wrappedLines = WrapText(rawLine, maxContentWidth);
+            foreach (var wl in wrappedLines)
             {
-                new("\u2502 ", borderScheme),
-                new(trimmed + new string(' ', padding), DarkColors.Content),
-                new(" \u2502", borderScheme)
-            });
+                var padding = Math.Max(0, maxContentWidth - wl.Length);
+                _mainWindow.AddColoredSegments(new List<TextSegment>
+                {
+                    new("\u2502 ", borderScheme),
+                    new(wl + new string(' ', padding), DarkColors.Content),
+                    new(" \u2502", borderScheme)
+                });
+            }
         }
 
         // Bottom border: ╰─...─╯
@@ -361,4 +363,26 @@ public class TerminalGuiObserver : IAgentObserver
         tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:F1}M"
         : tokens >= 1_000 ? $"{tokens / 1_000.0:F1}K"
         : $"{tokens}";
+
+    /// <summary>Wrap text to fit within maxWidth, breaking at word boundaries when possible.</summary>
+    private static List<string> WrapText(string text, int maxWidth)
+    {
+        if (maxWidth <= 0) maxWidth = 76;
+        if (text.Length <= maxWidth)
+            return new List<string> { text };
+
+        var result = new List<string>();
+        var remaining = text;
+        while (remaining.Length > maxWidth)
+        {
+            // Try to break at a space
+            var breakAt = remaining.LastIndexOf(' ', maxWidth - 1);
+            if (breakAt <= 0) breakAt = maxWidth; // No space found, hard break
+            result.Add(remaining[..breakAt]);
+            remaining = remaining[breakAt..].TrimStart();
+        }
+        if (remaining.Length > 0)
+            result.Add(remaining);
+        return result;
+    }
 }

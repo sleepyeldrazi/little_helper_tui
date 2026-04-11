@@ -9,46 +9,20 @@ namespace LittleHelperTui.Views;
 /// </summary>
 public static class DarkColors
 {
-    // Main text: light grey on black
     public static readonly ColorScheme Base = MakeScheme(Color.Gray, Color.Black);
-
-    // User panel border: green on black
     public static readonly ColorScheme UserBorder = MakeScheme(Color.Green, Color.Black);
-
-    // Assistant panel border: warm blue (purple-adjacent) on black — matches old Spectre Color.Blue
     public static readonly ColorScheme AssistantBorder = MakeScheme(new Color(110, 130, 230), Color.Black);
-
-    // Thinking panel border: dark grey on black
     public static readonly ColorScheme ThinkingBorder = MakeScheme(Color.DarkGray, Color.Black);
-
-    // Panel content: white on black (readable)
     public static readonly ColorScheme Content = MakeScheme(Color.White, Color.Black);
-
-    // Tool success icon/header
     public static readonly ColorScheme ToolOk = MakeScheme(Color.Green, Color.Black);
-
-    // Tool error icon/header
     public static readonly ColorScheme ToolErr = MakeScheme(Color.Red, Color.Black);
-
-    // Dim info/detail text
     public static readonly ColorScheme Dim = MakeScheme(Color.DarkGray, Color.Black);
-
-    // Yellow warnings/compaction
     public static readonly ColorScheme Warning = MakeScheme(Color.Yellow, Color.Black);
-
-    // Bright white for emphasis
     public static readonly ColorScheme Bright = MakeScheme(Color.White, Color.Black);
-
-    // Red errors
     public static readonly ColorScheme Error = MakeScheme(Color.Red, Color.Black);
-
-    // Bold text (white, same as bright but semantically different)
     public static readonly ColorScheme Bold = MakeScheme(Color.White, Color.Black);
-
-    // Teal for assistant role in history
     public static readonly ColorScheme Teal = MakeScheme(new Color(100, 200, 180), Color.Black);
 
-    // Dialog: soft grey on very dark grey, subtle highlight
     public static readonly ColorScheme Dialog = new()
     {
         Normal = new Attribute(Color.Gray, new Color(30, 30, 30)),
@@ -66,9 +40,6 @@ public static class DarkColors
     };
 }
 
-/// <summary>
-/// A segment of colored text within a line.
-/// </summary>
 public record TextSegment(string Text, ColorScheme Scheme);
 
 /// <summary>
@@ -92,18 +63,15 @@ public class ColoredLine : View
         int x = 0;
         foreach (var seg in _segments)
         {
-            var attr = seg.Scheme.Normal;
-            Driver.SetAttribute(attr);
+            Driver.SetAttribute(seg.Scheme.Normal);
             foreach (var rune in seg.Text.EnumerateRunes())
             {
                 if (x >= bounds.Width) break;
                 Move(x, 0);
                 Driver.AddRune(rune);
-                // Box-drawing and most BMP chars are width 1
                 x++;
             }
         }
-        // Fill rest with spaces
         var spaceRune = new Rune(' ');
         Driver.SetAttribute(DarkColors.Base.Normal);
         while (x < bounds.Width)
@@ -117,8 +85,7 @@ public class ColoredLine : View
 
 /// <summary>
 /// Main window: dark, borderless, full-screen.
-/// Chat area uses a simple View with manual Y tracking for content,
-/// wrapped in a ScrollView for scrolling. Input at bottom with "> " prompt.
+/// Chat area uses a simple View with manual Y tracking inside a ScrollView.
 /// </summary>
 public class MainWindow : Window
 {
@@ -127,7 +94,8 @@ public class MainWindow : Window
     private readonly TextField _inputField;
     private readonly TuiController _controller;
     private bool _autoScroll = true;
-    private int _nextY;  // Track next Y position explicitly
+    private int _nextY;
+    private int _lastKnownWidth;
 
     private readonly List<string> _history = new();
     private int _historyIndex = -1;
@@ -149,7 +117,7 @@ public class MainWindow : Window
         {
             X = 0, Y = 0,
             Width = Dim.Fill(),
-            Height = 1, // Will be updated as content is added
+            Height = 1,
             ColorScheme = DarkColors.Base
         };
 
@@ -162,6 +130,24 @@ public class MainWindow : Window
             ShowVerticalScrollIndicator = true
         };
         _scrollView.Add(_chatContent);
+
+        // On resize, update content size to new width (prevent freeze from stale size)
+        _scrollView.LayoutComplete += (s, e) =>
+        {
+            var newWidth = _scrollView.Frame.Width;
+            if (newWidth > 0 && newWidth != _lastKnownWidth)
+            {
+                _lastKnownWidth = newWidth;
+                // Update content size with new width, keep height
+                _scrollView.SetContentSize(new System.Drawing.Size(newWidth, Math.Max(1, _nextY)));
+                if (_autoScroll)
+                {
+                    var viewportHeight = _scrollView.Frame.Height;
+                    var targetOffset = Math.Max(0, _nextY - viewportHeight);
+                    _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
+                }
+            }
+        };
 
         var promptLabel = new Label
         {
@@ -197,14 +183,12 @@ public class MainWindow : Window
 
     public void SetStatus(string text) { }
 
-    /// <summary>Get the current chat area width for panel border sizing.</summary>
     public int GetChatWidth()
     {
         var w = _scrollView.Frame.Width;
         return w > 0 ? w : 80;
     }
 
-    /// <summary>Add a single-color text block to the chat.</summary>
     public void AddColoredBlock(string text, ColorScheme? scheme = null)
     {
         Application.Invoke(() =>
@@ -228,7 +212,6 @@ public class MainWindow : Window
         });
     }
 
-    /// <summary>Add a line with multiple colored segments to the chat.</summary>
     public void AddColoredSegments(List<TextSegment> segments)
     {
         Application.Invoke(() =>
@@ -258,15 +241,14 @@ public class MainWindow : Window
 
     private void UpdateContentSize()
     {
-        // Set content height explicitly so ScrollView knows the extent
-        _chatContent.Height = _nextY;
-        _scrollView.SetContentSize(new System.Drawing.Size(
-            _scrollView.Frame.Width > 0 ? _scrollView.Frame.Width : 80,
-            _nextY));
+        _chatContent.Height = Math.Max(1, _nextY);
+        var w = _scrollView.Frame.Width;
+        if (w <= 0) w = 80;
+        _lastKnownWidth = w;
+        _scrollView.SetContentSize(new System.Drawing.Size(w, Math.Max(1, _nextY)));
 
         if (_autoScroll)
         {
-            // Scroll to show the last line
             var viewportHeight = _scrollView.Frame.Height;
             var targetOffset = Math.Max(0, _nextY - viewportHeight);
             _scrollView.ContentOffset = new System.Drawing.Point(0, -targetOffset);
@@ -290,7 +272,6 @@ public class MainWindow : Window
         var maxOffset = Math.Max(0, _nextY - _scrollView.Frame.Height);
         newY = Math.Max(-maxOffset, Math.Min(0, newY));
         _scrollView.ContentOffset = new System.Drawing.Point(0, newY);
-
         _autoScroll = -newY >= _nextY - _scrollView.Frame.Height - 2;
     }
 

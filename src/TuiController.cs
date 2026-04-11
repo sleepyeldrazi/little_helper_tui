@@ -367,9 +367,9 @@ public class TuiController
 
         if (files.Count > 0)
         {
-            _mainWindow?.AddColoredBlock("Files changed this session:");
+            _mainWindow?.AddColoredBlock("Files changed this session:", DarkColors.Bold);
             foreach (var f in files)
-                _mainWindow?.AddColoredBlock($"  {f}");
+                _mainWindow?.AddColoredBlock($"  {f}", DarkColors.AssistantBorder);
             _mainWindow?.AddColoredBlock("");
         }
         else
