@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # install.sh — little helper TUI installer (Terminal.Gui v2 rewrite branch)
-# Usage: curl -fsSL https://raw.githubusercontent.com/sleepyeldrazi/little_helper_tui/plan/terminal-gui-rewrite/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/sleepyeldrazi/little_helper_tui/main/install.sh | bash
+# Or for a specific branch: LH_BRANCH=feature/prompt-tier-and-ux curl ... | bash
 #
 # What it does:
 #   1. Detects OS (Linux/macOS) and arch
@@ -120,7 +121,7 @@ if [ -d "$REPO_DIR/.git" ]; then
 else
     info "Cloning little_helper_tui -> ${REPO_DIR}"
     mkdir -p "$INSTALL_DIR"
-    git clone --branch plan/terminal-gui-rewrite --recurse-submodules \
+    git clone --branch "${LH_BRANCH:-plan/terminal-gui-rewrite}" --recurse-submodules \
         https://github.com/sleepyeldrazi/little_helper_tui.git \
         "$REPO_DIR" 2>&1 || die "git clone failed"
     cd "$REPO_DIR"
@@ -129,7 +130,7 @@ fi
 # Re-exec from repo copy to avoid stale GitHub CDN cache issues.
 # The curl'd script may be outdated; the repo's copy is always current.
 if [ "${_LH_FROM_REPO:-}" != "1" ]; then
-    export _LH_FROM_REPO=1 DOTNET_BIN
+    export _LH_FROM_REPO=1 DOTNET_BIN LH_BRANCH
     exec bash "${REPO_DIR}/install.sh"
 fi
 
