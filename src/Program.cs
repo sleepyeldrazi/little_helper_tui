@@ -113,6 +113,7 @@ class Program
         }
         finally
         {
+            MainWindow.DisableBracketPaste();
             Application.Shutdown();
         }
     }

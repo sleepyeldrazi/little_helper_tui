@@ -107,6 +107,17 @@ public class MainWindow : Window
     private int _historyIndex = -1;
     private string _savedDraft = "";
 
+    // Thinking indicator
+    private static readonly string[] SpinnerFrames = { "⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷" };
+    private readonly Label _spinnerLabel;
+    private int _spinnerIndex;
+    private bool _isThinking;
+
+    // Paste detection: track inter-key timing to suppress Enter during pastes
+    private long _lastKeyTicks;
+    private bool _suppressEnter;
+    private int _pasteEnterCount;
+
     public TextView InputView => _inputView;
 
     public MainWindow(TuiController controller)
@@ -137,7 +148,8 @@ public class MainWindow : Window
         };
         _scrollView.Add(_chatContent);
 
-        var promptLabel = new Label
+        // Prompt label doubles as spinner: shows "> " normally, "⣾ thinking..." while agent runs
+        _spinnerLabel = new Label
         {
             X = 0, Y = Pos.AnchorEnd(3),
             Text = "> ",
@@ -154,10 +166,23 @@ public class MainWindow : Window
             AllowsTab = false  // Tab does path completion, not insert tab
         };
 
-        Add(_scrollView, promptLabel, _inputView);
+        Add(_scrollView, _spinnerLabel, _inputView);
+
+        // Enable bracket paste mode: terminal wraps pastes in ESC[200~...ESC[201~
+        EnableBracketPaste();
+
+        // Global key handler: detect paste timing to suppress Enter during rapid key sequences
+        Application.KeyDown += (sender, key) => OnGlobalKeyDown(key);
 
         _inputView.KeyDown += (s, e) =>
         {
+            // During paste (rapid key sequence), let Enter pass through as newline
+            if (_suppressEnter && e.KeyCode == KeyCode.Enter)
+            {
+                _pasteEnterCount++;
+                return; // let TextView insert newline
+            }
+
             switch (e.KeyCode)
             {
                 case KeyCode.CursorUp when e.IsCtrl: NavigateHistory(-1); e.Handled = true; break;
@@ -165,7 +190,9 @@ public class MainWindow : Window
                 case KeyCode.PageUp: ScrollChat(-10); e.Handled = true; break;
                 case KeyCode.PageDown: ScrollChat(10); e.Handled = true; break;
                 case KeyCode.Tab: CompletePath(); e.Handled = true; break;
-                case KeyCode.C when e.IsCtrl && !e.IsShift: _controller.Cancel(); e.Handled = true; break;
+                case KeyCode.C when e.IsCtrl && !e.IsShift:
+                    if (_controller.IsAgentRunning) { _controller.Cancel(); e.Handled = true; }
+                    break;
                 case KeyCode.Enter when !e.IsShift: SubmitInput(); e.Handled = true; break;
             }
         };
@@ -450,5 +477,83 @@ public class MainWindow : Window
                 prefix = prefix[..^1];
         }
         return prefix;
+    }
+
+    // --- Thinking indicator ---
+
+    /// <summary>
+    /// Start or stop the thinking spinner. Called from TuiController when agent starts/stops.
+    /// </summary>
+    public void SetThinking(bool thinking)
+    {
+        _isThinking = thinking;
+        if (thinking)
+        {
+            _spinnerIndex = 0;
+            _spinnerLabel.ColorScheme = DarkColors.AssistantBorder;
+            // Timer ticks every 200ms to advance the spinner frame
+            Application.AddTimeout(TimeSpan.FromMilliseconds(200), TickSpinner);
+        }
+        else
+        {
+            _spinnerLabel.Text = "> ";
+            _spinnerLabel.ColorScheme = DarkColors.Dim;
+        }
+    }
+
+    private bool TickSpinner()
+    {
+        if (!_isThinking) return false; // stop timer
+        _spinnerIndex = (_spinnerIndex + 1) % SpinnerFrames.Length;
+        _spinnerLabel.Text = $"{SpinnerFrames[_spinnerIndex]} thinking";
+        return true; // keep timer running
+    }
+
+    // --- Bracket paste ---
+
+    /// <summary>Enable terminal bracket paste mode (ESC[?2004h).</summary>
+    private static void EnableBracketPaste()
+    {
+        try { Console.Out.Write("\x1b[?2004h"); Console.Out.Flush(); }
+        catch { }
+    }
+
+    /// <summary>Disable terminal bracket paste mode (ESC[?2004l). Called on shutdown.</summary>
+    public static void DisableBracketPaste()
+    {
+        try { Console.Out.Write("\x1b[?2004l"); Console.Out.Flush(); }
+        catch { }
+    }
+
+    /// <summary>
+    /// Global key handler: detect rapid key sequences (terminal paste).
+    /// When keys arrive within 50ms of each other, we're in a paste burst.
+    /// Suppress Enter during pastes so newlines go into the TextView as text.
+    /// </summary>
+    private void OnGlobalKeyDown(Key key)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var intervalMs = (now - _lastKeyTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+
+        if (intervalMs < 50 && _lastKeyTicks != 0)
+        {
+            // Rapid key sequence — likely a paste
+            if (!_suppressEnter)
+            {
+                _suppressEnter = true;
+                _pasteEnterCount = 0;
+            }
+        }
+        else
+        {
+            // Normal typing pace — if we were in a paste, it's over
+            if (_suppressEnter)
+            {
+                _suppressEnter = false;
+                // If paste only had 0 newlines (single line paste), no harm done
+            }
+        }
+
+        _lastKeyTicks = now;
     }
 }

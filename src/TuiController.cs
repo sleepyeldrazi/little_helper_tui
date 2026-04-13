@@ -27,6 +27,9 @@ public class TuiController
     private CancellationTokenSource? _currentCts;
     private string? _pendingSkillContent;
 
+    /// <summary>True when the agent is actively processing (between SubmitPrompt start and finish).</summary>
+    public bool IsAgentRunning => _currentCts != null && !_currentCts.IsCancellationRequested;
+
     public TuiController(TuiConfig config, bool yoloMode = false)
     {
         _config = config;
@@ -76,7 +79,11 @@ public class TuiController
         var cts = _currentCts;
         var sw = Stopwatch.StartNew();
 
-        Application.Invoke(() => _mainWindow.InputView.Enabled = false);
+        Application.Invoke(() =>
+        {
+            _mainWindow.InputView.Enabled = false;
+            _mainWindow.SetThinking(true);
+        });
 
         try
         {
@@ -141,6 +148,7 @@ public class TuiController
         {
             Application.Invoke(() =>
             {
+                _mainWindow.SetThinking(false);
                 _mainWindow.InputView.Enabled = true;
                 _mainWindow.InputView.SetFocus();
             });
@@ -192,6 +200,9 @@ public class TuiController
                 break;
             case ":cancel":
                 Cancel();
+                break;
+            case ":yank" or ":y":
+                YankLastResponse();
                 break;
             case ":driver":
                 ToggleDriver(arg);
@@ -458,6 +469,23 @@ public class TuiController
         }
     }
 
+    /// <summary>Copy last assistant response to terminal clipboard via OSC 52.</summary>
+    private void YankLastResponse()
+    {
+        if (_mainWindow == null) return;
+        var text = _observer?.LastResponseText;
+        if (string.IsNullOrEmpty(text))
+        {
+            _mainWindow.AddColoredBlock("No response to yank.", DarkColors.Dim);
+            return;
+        }
+
+        if (ClipboardHelper.Copy(text))
+            _mainWindow.AddColoredBlock($"Yanked {text.Length} chars to clipboard.", DarkColors.ToolOk);
+        else
+            _mainWindow.AddColoredBlock("Clipboard not available. Install wl-copy/xclip, or use a terminal with OSC 52.", DarkColors.Warning);
+    }
+
     /// <summary>Show path completion options in the chat.</summary>
     public void ShowCompletions(List<string> options)
     {
@@ -482,6 +510,7 @@ public class TuiController
         HelpLine(":driver [net|curses]", "Toggle console driver");
         HelpLine(":reset", "Reset conversation");
         HelpLine(":cancel", "Cancel current agent run");
+        HelpLine(":yank", "Copy last response to clipboard");
         HelpLine(":hide", "Drop to shell, return with 'exit'");
         HelpLine(":quit", "Exit");
         _mainWindow.AddColoredBlock("");
@@ -490,7 +519,8 @@ public class TuiController
         _mainWindow.AddColoredBlock("  Shift+Enter     New line");
         _mainWindow.AddColoredBlock("  Tab             Complete file path");
         _mainWindow.AddColoredBlock("  Ctrl+Up/Down    Navigate history");
-        _mainWindow.AddColoredBlock("  Ctrl+C          Cancel during agent run");
+        _mainWindow.AddColoredBlock("  Ctrl+C          Cancel agent / copy in input");
+        _mainWindow.AddColoredBlock("  Shift+drag      Select text from terminal");
     }
 
     private void HelpLine(string cmd, string desc)

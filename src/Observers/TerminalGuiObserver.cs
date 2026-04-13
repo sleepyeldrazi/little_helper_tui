@@ -27,6 +27,9 @@ public class TerminalGuiObserver : IAgentObserver
     public int TotalTokens { get; private set; }
     public int TotalThinkingTokens { get; private set; }
 
+    /// <summary>Last assistant text response, for :yank copy-to-clipboard.</summary>
+    public string? LastResponseText { get; private set; }
+
     public string StreamingPreview
     {
         get
@@ -102,6 +105,7 @@ public class TerminalGuiObserver : IAgentObserver
         // Assistant panel (blue border)
         if (!string.IsNullOrWhiteSpace(response.Content))
         {
+            LastResponseText = response.Content;
             // Header: "Assistant" in blue, stats dim
             var headerSegments = new List<TextSegment>
             {
