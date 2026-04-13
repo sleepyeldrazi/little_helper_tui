@@ -59,6 +59,7 @@ public static class ClientFactory
     {
         var (client, tools) = Create(resolved, workingDir, allowEscape);
 
+        SkillDiscovery.SeedDefaults(ResolveBundledSkillsDir());
         var skills = new SkillDiscovery();
         skills.Discover(workingDir);
 
@@ -73,9 +74,19 @@ public static class ClientFactory
             Temperature: resolved.Temperature,
             ApiKey: string.IsNullOrEmpty(resolved.ApiKey) ? null : resolved.ApiKey,
             ExtraHeaders: resolved.Headers,
-            EnableStreaming: config.Streaming
+            EnableStreaming: config.Streaming,
+            PromptTier: resolved.PromptTier
         );
 
         return new Agent(agentConfig, client, tools, skills, logger, observer);
+    }
+
+    private static string ResolveBundledSkillsDir()
+    {
+        var assemblyDir = AppContext.BaseDirectory;
+        var devPath = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", "..", "core", "skills"));
+        if (Directory.Exists(devPath))
+            return devPath;
+        return Path.GetFullPath(Path.Combine(assemblyDir, "skills"));
     }
 }
